@@ -30,7 +30,7 @@ const api = {
   reader: {
     onInit: (cb: (init: ReaderInit) => void) => on('reader:init', cb),
     onEvent: (cb: (ev: RunEvent) => void) => on('reader:event', cb),
-    translate: (text: string, language: string) => ipcRenderer.send('reader:translate', { text, language }),
+    translate: (text: string, language: string, id: number) => ipcRenderer.send('reader:translate', { text, language, id }),
     copy: (text: string) => ipcRenderer.send('reader:copy', text),
     close: () => ipcRenderer.send('reader:close')
   },
@@ -43,7 +43,7 @@ const api = {
     web: (query: string) => ipcRenderer.send('launcher:web', query),
     url: (url: string) => ipcRenderer.send('launcher:url', url),
     copy: (text: string) => ipcRenderer.send('launcher:copy', text),
-    ask: (question: string) => ipcRenderer.send('launcher:ask', question),
+    ask: (question: string, id: number) => ipcRenderer.send('launcher:ask', { question, id }),
     close: () => ipcRenderer.send('launcher:close')
   },
   settings: {

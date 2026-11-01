@@ -18,6 +18,8 @@ export function Reader(): React.JSX.Element {
   // El texto que se tradujo por última vez: si el original cambia, se ofrece volver a traducir.
   const [translatedFrom, setTranslatedFrom] = useState('')
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  // Id de la última traducción pedida: lo que llegue de una anterior se ignora.
+  const requestId = useRef(0)
 
   const translate = useCallback((source: string, lang: string) => {
     if (!source.trim()) return
@@ -25,7 +27,7 @@ export function Reader(): React.JSX.Element {
     setError('')
     setStatus('streaming')
     setTranslatedFrom(source)
-    api.translate(source.trim(), lang)
+    api.translate(source.trim(), lang, ++requestId.current)
   }, [])
 
   useEffect(() => {
@@ -43,6 +45,7 @@ export function Reader(): React.JSX.Element {
       }
     })
     const offEvent = api.onEvent((ev: RunEvent) => {
+      if (ev.id !== requestId.current) return
       if (ev.type === 'delta') setTranslation(ev.text)
       else if (ev.type === 'done') {
         setTranslation(ev.text)

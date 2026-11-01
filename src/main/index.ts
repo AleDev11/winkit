@@ -127,7 +127,12 @@ function registerIpc(): void {
 if (!app.requestSingleInstanceLock()) {
   app.quit()
 } else {
-  app.on('second-instance', openSettings)
+  // `Winkit.exe --launcher` / `--reader` con la app ya abierta: para accesos directos o scripts.
+  app.on('second-instance', (_e, argv) => {
+    if (argv.includes('--launcher')) void toggleLauncher()
+    else if (argv.includes('--reader')) void openReader(resource('icon.png'), false)
+    else openSettings()
+  })
   // La app vive en la bandeja: cerrar ventanas no la termina.
   app.on('window-all-closed', () => {})
   app.on('will-quit', () => globalShortcut.unregisterAll())

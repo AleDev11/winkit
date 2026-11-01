@@ -50,12 +50,15 @@ function send(channel: string, payload: unknown): void {
   win?.webContents.send(channel, payload)
 }
 
-/** Abre el lector con la selección actual; sin selección se abre vacío para pegar texto. */
-export async function openReader(icon: string): Promise<void> {
+/**
+ * Abre el lector con la selección actual; sin selección (o con `capture` a
+ * false, desde la línea de comandos) se abre vacío para pegar texto.
+ */
+export async function openReader(icon: string, capture = true): Promise<void> {
   if (busy) return
   busy = true
   try {
-    const { text } = await captureSelection(false)
+    const { text } = capture ? await captureSelection(false) : { text: '' }
     if (!win) win = create(icon)
     await ready
     const s = getSettings()
@@ -75,11 +78,13 @@ export async function openReader(icon: string): Promise<void> {
 }
 
 export function registerReader(): void {
-  ipcMain.on('reader:translate', async (_e, req: { text: string; language: string }) => {
+  // Cada evento lleva el id de su petición: el lector descarta los de una traducción anterior.
+  ipcMain.on('reader:translate', async (_e, req: { text: string; language: string; id: number }) => {
     abort?.abort()
     const current = new AbortController()
     abort = current
     const s = getSettings()
+    const id = req.id
     try {
       const text = await run({
         apiKey: getApiKey(),
@@ -89,13 +94,13 @@ export function registerReader(): void {
         customActions: [],
         translateFallback: req.language === s.translateTarget ? s.readerLanguage : s.translateTarget,
         signal: current.signal,
-        onDelta: (t) => send('reader:event', { type: 'delta', text: t } satisfies RunEvent)
+        onDelta: (t) => send('reader:event', { type: 'delta', text: t, id } satisfies RunEvent)
       })
-      if (!current.signal.aborted) send('reader:event', { type: 'done', text } satisfies RunEvent)
+      if (!current.signal.aborted) send('reader:event', { type: 'done', text, id } satisfies RunEvent)
     } catch (err) {
       if (current.signal.aborted) return
       const e = err instanceof WinkitError ? err : new WinkitError(String(err))
-      send('reader:event', { type: 'error', message: e.message, openSettings: e.openSettings } satisfies RunEvent)
+      send('reader:event', { type: 'error', message: e.message, openSettings: e.openSettings, id } satisfies RunEvent)
     }
   })
   ipcMain.on('reader:copy', (_e, text: string) => void clipboard.writeText(text))

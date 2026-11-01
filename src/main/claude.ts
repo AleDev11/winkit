@@ -18,10 +18,13 @@ const TASKS: Record<string, string> = {
   clearer: 'Mejora la redacción para que sea más clara y fluida, en el mismo idioma, sin cambiar lo que dice. Corrige también los errores.'
 }
 
+/** «Catalán» → «catalán»: así se escribe un idioma en mitad de una frase. */
+const langName = (lang: string): string => lang.charAt(0).toLocaleLowerCase('es') + lang.slice(1)
+
 function taskFor(req: RunRequest, customActions: CustomAction[], translateFallback: string): string {
-  const lang = req.language ?? 'Inglés'
-  const fallback =
-    translateFallback && translateFallback !== lang ? ` Si el texto ya está escrito en ${lang}, tradúcelo al ${translateFallback}.` : ''
+  const lang = langName(req.language ?? 'Inglés')
+  const fb = translateFallback && langName(translateFallback) !== lang ? langName(translateFallback) : ''
+  const fallback = fb ? ` Si el texto ya está escrito en ${lang}, tradúcelo al ${fb}.` : ''
   if (req.action === 'translate') {
     return `Traduce el texto al ${lang} con naturalidad, como lo escribiría un hablante nativo, manteniendo el tono y el registro.${fallback}`
   }
@@ -31,6 +34,18 @@ function taskFor(req: RunRequest, customActions: CustomAction[], translateFallba
   const custom = customActions.find((a) => a.id === req.action)
   if (custom) return `${custom.prompt.trim()}\n\nResponde en el mismo idioma del texto salvo que la instrucción pida otro.`
   return TASKS[req.action] ?? TASKS['correct']
+}
+
+/**
+ * Recordatorio que va después del texto. Las instrucciones están en español y,
+ * con textos largos, un modelo rápido puede acabar escribiendo en español aunque
+ * se le haya pedido otro idioma: repetirlo al final lo deja claro.
+ */
+function reminderFor(req: RunRequest, translateFallback: string): string {
+  if (req.action !== 'translate' && req.action !== 'read') return ''
+  const lang = langName(req.language ?? 'Inglés')
+  const fb = translateFallback && langName(translateFallback) !== lang ? langName(translateFallback) : ''
+  return `\n\nDevuelve solo la traducción, escrita en ${lang}${fb ? ` (o en ${fb} si el original ya estaba en ${lang})` : ''}.`
 }
 
 /** La selección suele arrastrar espacios o un salto de línea final: se conservan tal cual. */
@@ -77,7 +92,7 @@ export async function run(o: RunOptions): Promise<string> {
     apiKey: o.apiKey,
     model: o.model,
     system: SYSTEM,
-    content: `<tarea>${taskFor(o.request, o.customActions, o.translateFallback)}</tarea>\n\n<texto>\n${o.text}\n</texto>`,
+    content: `<tarea>${taskFor(o.request, o.customActions, o.translateFallback)}</tarea>\n\n<texto>\n${o.text}\n</texto>${reminderFor(o.request, o.translateFallback)}`,
     signal: o.signal,
     onDelta: o.onDelta
   })
@@ -143,6 +158,8 @@ async function streamText(o: StreamOptions): Promise<string> {
 
     let acc = ''
     for await (const event of stream) {
+      // Tras cancelar, el SDK aún entrega lo que tenía en cola: que no llegue a la pantalla.
+      if (o.signal.aborted) break
       if (event.type === 'content_block_delta' && event.delta.type === 'text_delta') {
         acc += event.delta.text
         o.onDelta(acc)

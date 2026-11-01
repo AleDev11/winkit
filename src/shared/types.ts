@@ -93,10 +93,14 @@ export interface PopupInit {
   modelLabel: string
 }
 
-export type RunEvent =
+export type RunEvent = (
   | { type: 'delta'; text: string }
   | { type: 'done'; text: string }
   | { type: 'error'; message: string; openSettings?: boolean }
+) & {
+  /** Petición a la que pertenece, en las ventanas que pueden lanzar varias seguidas. */
+  id?: number
+}
 
 export interface ReaderInit {
   text: string

@@ -1,7 +1,7 @@
 {
   "name": "winkit",
   "productName": "Winkit",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Herramientas para Windows con Claude: corrector, traductor, lector y buscador",
   "main": "./out/main/index.js",
   "author": "Alejandro Font",

@@ -51,6 +51,8 @@ export function Launcher(): React.JSX.Element {
   const [copied, setCopied] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  // Id de la última pregunta: la respuesta a una anterior no debe pisar la nueva.
+  const requestId = useRef(0)
 
   useEffect(() => {
     const offInit = api.onInit((data) => {
@@ -61,6 +63,7 @@ export function Launcher(): React.JSX.Element {
       requestAnimationFrame(() => inputRef.current?.focus())
     })
     const offEvent = api.onEvent((ev: RunEvent) => {
+      if (ev.id !== requestId.current) return
       setAnswer((a) => {
         if (!a) return a
         if (ev.type === 'delta') return { ...a, text: ev.text }
@@ -91,7 +94,7 @@ export function Launcher(): React.JSX.Element {
     if (!q.trim()) return
     setAnswer({ question: q, text: '', status: 'streaming' })
     setCopied(false)
-    api.ask(q.trim())
+    api.ask(q.trim(), ++requestId.current)
   }
 
   const rows = useMemo<Row[]>(() => {

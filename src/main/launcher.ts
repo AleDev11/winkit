@@ -63,7 +63,7 @@ export function createLauncher(): void {
     void clipboard.writeText(text)
     hide()
   })
-  ipcMain.on('launcher:ask', (_e, question: string) => void askClaude(question))
+  ipcMain.on('launcher:ask', (_e, req: { question: string; id: number }) => void askClaude(req.question, req.id))
   ipcMain.on('launcher:close', hide)
 }
 
@@ -94,7 +94,7 @@ export async function toggleLauncher(): Promise<void> {
   win.focus()
 }
 
-async function askClaude(question: string): Promise<void> {
+async function askClaude(question: string, id: number): Promise<void> {
   abort?.abort()
   const current = new AbortController()
   abort = current
@@ -105,12 +105,12 @@ async function askClaude(question: string): Promise<void> {
       model: s.model,
       question,
       signal: current.signal,
-      onDelta: (t) => send('launcher:event', { type: 'delta', text: t } satisfies RunEvent)
+      onDelta: (t) => send('launcher:event', { type: 'delta', text: t, id } satisfies RunEvent)
     })
-    if (!current.signal.aborted) send('launcher:event', { type: 'done', text } satisfies RunEvent)
+    if (!current.signal.aborted) send('launcher:event', { type: 'done', text, id } satisfies RunEvent)
   } catch (err) {
     if (current.signal.aborted) return
     const e = err instanceof WinkitError ? err : new WinkitError(String(err))
-    send('launcher:event', { type: 'error', message: e.message, openSettings: e.openSettings } satisfies RunEvent)
+    send('launcher:event', { type: 'error', message: e.message, openSettings: e.openSettings, id } satisfies RunEvent)
   }
 }
