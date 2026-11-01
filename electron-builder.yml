@@ -1,0 +1,22 @@
+appId: com.alejandrofont.winkit
+productName: Winkit
+directories:
+  buildResources: resources
+files:
+  - out/**
+  - package.json
+  - resources/icon.png
+  - resources/tray.png
+  # koffi trae binarios de todas las plataformas: solo hace falta el de Windows x64.
+  - '!node_modules/koffi/build/koffi/!(win32_x64)/**'
+  - '!node_modules/koffi/{src,vendor,doc}/**'
+# koffi carga una librería nativa (.node): fuera del asar.
+asarUnpack:
+  - node_modules/koffi/**
+win:
+  target: nsis
+  icon: resources/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  artifactName: ${name}-setup-${version}.${ext}

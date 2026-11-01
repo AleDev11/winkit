@@ -1,0 +1,28 @@
+import { resolve } from 'path'
+import { defineConfig, externalizeDepsPlugin } from 'electron-vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  main: {
+    plugins: [externalizeDepsPlugin()]
+  },
+  preload: {
+    plugins: [externalizeDepsPlugin()]
+  },
+  renderer: {
+    resolve: {
+      alias: { '@shared': resolve('src/shared') }
+    },
+    plugins: [react()],
+    build: {
+      rollupOptions: {
+        input: {
+          popup: resolve('src/renderer/popup.html'),
+          settings: resolve('src/renderer/settings.html'),
+          reader: resolve('src/renderer/reader.html'),
+          launcher: resolve('src/renderer/launcher.html')
+        }
+      }
+    }
+  }
+})

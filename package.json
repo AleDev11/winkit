@@ -1,0 +1,45 @@
+{
+  "name": "winkit",
+  "productName": "Winkit",
+  "version": "0.1.0",
+  "description": "Herramientas para Windows con Claude: corrector, traductor, lector y buscador",
+  "main": "./out/main/index.js",
+  "author": "Alejandro Font",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit -p tsconfig.node.json && tsc --noEmit -p tsconfig.web.json",
+    "dist": "electron-vite build && electron-builder --win",
+    "postinstall": "node node_modules/electron/install.js"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
+    "@fontsource-variable/geist": "^5.3.0",
+    "koffi": "^2.12.0",
+    "lucide-react": "^1.48.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^5.2.0",
+    "electron": "^44.4.5",
+    "electron-builder": "^26.15.3",
+    "electron-vite": "^5.0.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
+    "typescript": "^5.9.3",
+    "vite": "^7.3.6"
+  },
+  "homepage": "https://github.com/AleDev11/winkit",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/AleDev11/winkit.git"
+  }
+}

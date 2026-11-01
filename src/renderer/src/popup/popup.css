@@ -1,0 +1,333 @@
+html,
+body {
+  background: transparent;
+  overflow: hidden;
+}
+
+/* El margen deja sitio a la sombra; main ajusta la ventana a la tarjeta + este margen. */
+#root {
+  padding: 16px;
+  display: flex;
+  align-items: flex-start;
+}
+
+.card {
+  width: 428px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-pop);
+  overflow: hidden;
+  animation: pop-in 140ms var(--ease);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(0.985);
+  }
+}
+
+/* ---- cabecera ---- */
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px 9px 12px;
+  border-bottom: 1px solid var(--line);
+}
+
+.logo {
+  flex: none;
+}
+
+.head-title {
+  flex: 1;
+  font-weight: 600;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chip {
+  font-size: 11px;
+  font-weight: 550;
+  color: var(--muted);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  color: var(--muted);
+}
+
+.icon-btn:hover {
+  background: var(--surface-3);
+  color: var(--text);
+}
+
+.accent {
+  color: var(--accent);
+}
+
+.ok {
+  color: var(--ok);
+}
+
+.warn {
+  color: var(--accent);
+  flex: none;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+/* ---- menú ---- */
+.preview {
+  margin: 0;
+  padding: 9px 12px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.menu {
+  list-style: none;
+  margin: 0;
+  padding: 5px;
+  max-height: 340px;
+  overflow-y: auto;
+}
+
+.item {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 32px;
+  padding: 0 8px;
+  border: none;
+  border-radius: var(--r-sm);
+  background: transparent;
+  text-align: left;
+}
+
+.item.active {
+  background: var(--surface-3);
+}
+
+.item-icon {
+  color: var(--muted);
+  flex: none;
+}
+
+.item.active .item-icon {
+  color: var(--accent);
+}
+
+.item-label {
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-hint {
+  flex: 1;
+  font-size: 12px;
+  color: var(--faint);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.item-key {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--faint);
+  flex: none;
+}
+
+/* ---- resultado ---- */
+.result {
+  padding: 12px 14px;
+  max-height: 360px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 1.55;
+  user-select: text;
+}
+
+.result ins {
+  text-decoration: none;
+  color: var(--add);
+  background: var(--add-soft);
+  border-radius: 3px;
+}
+
+.result del {
+  color: var(--del);
+  background: var(--del-soft);
+  text-decoration-thickness: 1px;
+  border-radius: 3px;
+}
+
+.banner {
+  margin-bottom: 8px;
+  padding: 7px 10px;
+  border-radius: var(--r-sm);
+  background: var(--add-soft);
+  color: var(--add);
+  font-size: 12.5px;
+}
+
+.caret {
+  display: inline-block;
+  width: 7px;
+  height: 1em;
+  margin-left: 1px;
+  vertical-align: -2px;
+  background: var(--accent);
+  border-radius: 1px;
+  animation: blink 1s steps(2) infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.error {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 14px;
+  color: var(--danger);
+}
+
+/* ---- pie ---- */
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.foot.hints {
+  gap: 14px;
+  padding: 7px 12px;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-2);
+  cursor: pointer;
+  user-select: none;
+}
+
+.toggle input {
+  accent-color: var(--accent);
+  margin: 0;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--line-2);
+  background: var(--surface-2);
+  font-weight: 550;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.btn:hover:not(:disabled) {
+  background: var(--surface-3);
+}
+
+.btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.btn.primary {
+  border-color: transparent;
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--accent-strong);
+}
+
+.btn.primary kbd {
+  background: rgba(0, 0, 0, 0.12);
+  border-color: rgba(0, 0, 0, 0.2);
+  color: var(--accent-fg);
+}
+
+.btn.sm {
+  height: 26px;
+  padding: 0 9px;
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.item:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+/* ---- píldora y aviso ---- */
+.card.pill,
+.card.notice {
+  width: max-content;
+  max-width: 428px;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  padding: 8px 10px 8px 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.card.notice {
+  padding: 10px 12px;
+}
