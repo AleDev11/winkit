@@ -8,6 +8,7 @@
 
 Funciona en cualquier aplicación: Discord, Gmail, Word, Teams, el navegador… Vive en la bandeja del sistema y aparece con un atajo.
 
+[![Release](https://img.shields.io/github/v/release/AleDev11/winkit?label=versi%C3%B3n)](https://github.com/AleDev11/winkit/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 ![Windows](https://img.shields.io/badge/Windows-10%20%7C%2011-0078D4)
 
@@ -44,16 +45,21 @@ Todos los atajos, el modelo, los idiomas y el buscador se cambian en Ajustes (cl
 
 ## Instalación
 
-Necesitas una [API key de Anthropic](https://console.anthropic.com/settings/keys).
+1. Descarga `winkit-setup-<versión>.exe` desde la [última versión](https://github.com/AleDev11/winkit/releases/latest) e instálalo.
+2. Abre Winkit y pega tu [API key de Anthropic](https://console.anthropic.com/settings/keys) en Ajustes.
+
+Se inicia sola con Windows y se queda en la bandeja del sistema.
+
+> El instalador no está firmado, así que Windows SmartScreen puede avisar la primera vez: «Más información» → «Ejecutar de todas formas».
+
+También puedes compilarlo tú:
 
 ```bash
 git clone https://github.com/AleDev11/winkit.git
 cd winkit
 bun install
-bun run dist
+bun run dist       # deja el instalador en dist/
 ```
-
-Instala `dist/winkit-setup-<versión>.exe`, abre Winkit y pega tu API key en Ajustes. Se inicia sola con Windows.
 
 ## Cómo funciona
 
