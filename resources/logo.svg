@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Winkit: tres casillas (Windows, el «kit») y una chispa (Claude) en la cuarta. -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2B3442"/>
+      <stop offset="1" stop-color="#151A22"/>
+    </linearGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.5" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0.08"/>
+    </linearGradient>
+    <linearGradient id="cell" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#DCE3EC"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#7AF0DD"/>
+      <stop offset="1" stop-color="#14B8A6"/>
+    </linearGradient>
+  </defs>
+  <rect x="32" y="32" width="960" height="960" rx="216" fill="url(#tile)"/>
+  <rect x="34" y="34" width="956" height="956" rx="214" fill="none" stroke="url(#rim)" stroke-width="4"/>
+  <rect x="216" y="216" width="264" height="264" rx="64" fill="url(#cell)"/>
+  <rect x="544" y="216" width="264" height="264" rx="64" fill="url(#cell)" opacity="0.82"/>
+  <rect x="216" y="544" width="264" height="264" rx="64" fill="url(#cell)" opacity="0.64"/>
+  <path d="M676 528 C694 618 722 646 804 676 C722 706 694 734 676 824 C658 734 630 706 548 676 C630 646 658 618 676 528 Z" fill="url(#spark)"/>
+</svg>

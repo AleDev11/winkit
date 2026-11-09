@@ -1,0 +1,641 @@
+@import './tokens.css';
+
+/* ── Base ───────────────────────────────────────────────────────────── */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--window-bg);
+  color: var(--text-1);
+  font-family: var(--font);
+  font-size: 14px;
+  line-height: 20px;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: default;
+}
+
+body {
+  overflow: hidden;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+  color: inherit;
+  margin: 0;
+}
+
+button {
+  cursor: default;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+a {
+  color: var(--accent-text);
+  text-decoration: none;
+}
+a:hover {
+  text-decoration: underline;
+}
+
+::selection {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+.selectable {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+
+:focus {
+  outline: none;
+}
+
+/* Foco de Fluent: trazo exterior de 2px con uno interior de contraste. */
+:focus-visible {
+  outline: 2px solid var(--focus-outer);
+  outline-offset: 1px;
+  box-shadow: 0 0 0 1px var(--focus-inner);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+  }
+}
+
+/* Barras de desplazamiento finas, como las de WinUI. */
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 6px;
+  background: var(--control-strong) padding-box;
+  opacity: 0.6;
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 3px;
+}
+::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* ── Tipografía ─────────────────────────────────────────────────────── */
+
+.caption {
+  font-size: 12px;
+  line-height: 16px;
+}
+.body-strong {
+  font-weight: 600;
+}
+.subtitle {
+  font-family: var(--font-display);
+  font-size: 20px;
+  line-height: 28px;
+  font-weight: 600;
+}
+.title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  line-height: 36px;
+  font-weight: 600;
+}
+.muted {
+  color: var(--text-2);
+}
+.faint {
+  color: var(--text-3);
+}
+.spacer {
+  flex: 1;
+}
+
+/* ── Iconos (Segoe Fluent Icons) ────────────────────────────────────── */
+
+.icon {
+  font-family: var(--font-icons);
+  font-style: normal;
+  font-weight: normal;
+  font-size: 16px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  speak: never;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Botones ────────────────────────────────────────────────────────── */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: var(--control-height);
+  min-width: 32px;
+  padding: 0 12px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-control-2);
+  background: var(--control);
+  background-clip: padding-box;
+  color: var(--text-1);
+  white-space: nowrap;
+  transition:
+    background-color var(--fast) var(--ease),
+    color var(--fast) var(--ease);
+}
+.btn:hover {
+  background-color: var(--control-hover);
+}
+.btn:active {
+  background-color: var(--control-pressed);
+  color: var(--text-2);
+  border-bottom-color: var(--stroke-control);
+}
+.btn:disabled {
+  background-color: var(--control-disabled);
+  color: var(--text-disabled);
+  border-color: var(--stroke-control);
+}
+.btn .icon {
+  font-size: 14px;
+}
+
+.btn.accent {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  border-color: rgba(255, 255, 255, 0.08);
+  border-bottom-color: var(--stroke-accent-2);
+}
+.btn.accent:hover {
+  background: var(--accent-fill-hover);
+}
+.btn.accent:active {
+  background: var(--accent-fill-pressed);
+  color: var(--on-accent-secondary);
+  border-color: transparent;
+}
+.btn.accent:disabled {
+  background: var(--accent-fill-disabled);
+  color: var(--text-disabled);
+  border-color: transparent;
+}
+
+.btn.subtle {
+  background: transparent;
+  border-color: transparent;
+}
+.btn.subtle:hover {
+  background: var(--subtle-hover);
+}
+.btn.subtle:active {
+  background: var(--subtle-pressed);
+}
+.btn.subtle:disabled {
+  background: transparent;
+}
+
+.btn.sm {
+  height: 24px;
+  padding: 0 8px;
+  gap: 6px;
+  font-size: 12px;
+}
+.btn.icon-only {
+  padding: 0;
+  width: var(--control-height);
+}
+.btn.sm.icon-only {
+  width: 24px;
+}
+
+/* ── Campos de texto ────────────────────────────────────────────────── */
+
+.input,
+.select {
+  height: var(--control-height);
+  padding: 0 10px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--stroke-control);
+  background: var(--control);
+  box-shadow: inset 0 -1px 0 var(--stroke-strong);
+  transition: background-color var(--fast) var(--ease);
+}
+.input::placeholder,
+textarea::placeholder {
+  color: var(--text-2);
+}
+.input:hover,
+.select:hover {
+  background: var(--control-hover);
+}
+.input:focus,
+textarea.input:focus {
+  background: var(--control-input-active);
+  box-shadow: inset 0 -2px 0 var(--accent-fill);
+  outline: none;
+}
+.input:disabled {
+  background: var(--control-disabled);
+  color: var(--text-disabled);
+  box-shadow: none;
+}
+.input {
+  user-select: text;
+  -webkit-user-select: text;
+  cursor: text;
+}
+textarea.input {
+  height: auto;
+  padding: 6px 10px;
+  resize: none;
+  line-height: 20px;
+}
+
+/* Desplegable: <select> nativo con la flecha de Fluent. */
+.select-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.select {
+  appearance: none;
+  min-width: 140px;
+  padding-right: 32px;
+  box-shadow: none;
+  border-bottom-color: var(--stroke-control-2);
+}
+.select:active {
+  background: var(--control-pressed);
+}
+.select-wrap::after {
+  content: '\E70D';
+  font-family: var(--font-icons);
+  font-size: 12px;
+  color: var(--text-2);
+  position: absolute;
+  right: 11px;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.select option {
+  background: var(--solid-flyout);
+  color: var(--text-1);
+}
+
+/* ── Interruptor ────────────────────────────────────────────────────── */
+
+.switch {
+  appearance: none;
+  position: relative;
+  width: 40px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  border-radius: 10px;
+  border: 1px solid var(--stroke-strong);
+  background: var(--control-alt);
+  transition: background-color var(--fast) var(--ease);
+}
+.switch::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  background: var(--text-2);
+  transform: translateY(-50%);
+  transition:
+    left var(--normal) var(--ease-out),
+    width var(--fast) var(--ease),
+    height var(--fast) var(--ease),
+    background-color var(--fast) var(--ease);
+}
+.switch:hover {
+  background: var(--control-alt-hover);
+}
+.switch:hover::before {
+  width: 14px;
+  height: 14px;
+  left: 3px;
+}
+.switch:active::before {
+  width: 17px;
+}
+.switch:checked {
+  background: var(--accent-fill);
+  border-color: var(--accent-fill);
+}
+.switch:checked::before {
+  left: 22px;
+  background: var(--on-accent);
+}
+.switch:checked:hover {
+  background: var(--accent-fill-hover);
+}
+.switch:checked:hover::before {
+  left: 21px;
+}
+.switch:checked:active::before {
+  left: 18px;
+}
+
+/* ── Radio ──────────────────────────────────────────────────────────── */
+
+.radio {
+  appearance: none;
+  position: relative;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  flex: none;
+  border-radius: 50%;
+  border: 1px solid var(--stroke-strong);
+  background: var(--control-alt);
+  transition: background-color var(--fast) var(--ease);
+}
+.radio:hover {
+  background: var(--control-alt-hover);
+}
+.radio:checked {
+  border: none;
+  background: var(--accent-fill);
+}
+.radio:checked::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--on-accent);
+  box-shadow: 0 0 0 1px var(--stroke-control);
+  transition:
+    width var(--fast) var(--ease),
+    height var(--fast) var(--ease);
+}
+.radio:checked:hover::before {
+  width: 10px;
+  height: 10px;
+}
+
+/* ── Teclas, chips y avisos ─────────────────────────────────────────── */
+
+kbd,
+.kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--stroke-control);
+  border-bottom-color: var(--stroke-control-2);
+  background: var(--control);
+  font-family: var(--font-small);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  background: var(--accent-subtle);
+  color: var(--accent-text);
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+  flex: none;
+}
+.chip.neutral {
+  background: var(--control-alt-hover);
+  color: var(--text-2);
+}
+.chip .icon {
+  font-size: 11px;
+}
+
+.hints {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--text-3);
+  white-space: nowrap;
+}
+.hints > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* InfoBar de Fluent. */
+.infobar {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-control);
+  border: 1px solid var(--stroke-card);
+  background: var(--card-secondary);
+}
+.infobar > .icon {
+  width: 16px;
+  height: 20px;
+  font-size: 16px;
+}
+.infobar-body {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.infobar.error {
+  background: var(--critical-bg);
+}
+.infobar.error > .icon {
+  color: var(--critical);
+}
+.infobar.success {
+  background: var(--success-bg);
+}
+.infobar.success > .icon {
+  color: var(--success);
+}
+.infobar.caution {
+  background: var(--caution-bg);
+}
+.infobar.caution > .icon {
+  color: var(--caution);
+}
+.infobar.info > .icon {
+  color: var(--accent-text);
+}
+
+/* ── Progreso ───────────────────────────────────────────────────────── */
+
+.ring {
+  display: inline-block;
+  flex: none;
+  animation: ring-rotate 2s linear infinite;
+}
+.ring circle {
+  fill: none;
+  stroke: var(--accent-fill);
+  stroke-linecap: round;
+  animation: ring-dash 1.5s var(--ease) infinite;
+}
+@keyframes ring-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes ring-dash {
+  0% {
+    stroke-dasharray: 1 100;
+    stroke-dashoffset: 0;
+  }
+  50% {
+    stroke-dasharray: 60 100;
+    stroke-dashoffset: -15;
+  }
+  100% {
+    stroke-dasharray: 60 100;
+    stroke-dashoffset: -88;
+  }
+}
+
+/* Barra indeterminada de 3px. */
+.progress-bar {
+  position: relative;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+}
+.progress-bar::before,
+.progress-bar::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 2px;
+  background: var(--accent-fill);
+}
+.progress-bar::before {
+  width: 40%;
+  animation: bar-a 2s var(--ease) infinite;
+}
+.progress-bar::after {
+  width: 25%;
+  animation: bar-b 2s var(--ease) 1s infinite;
+}
+@keyframes bar-a {
+  0% {
+    left: -40%;
+  }
+  60%,
+  100% {
+    left: 100%;
+  }
+}
+@keyframes bar-b {
+  0% {
+    left: -25%;
+  }
+  60%,
+  100% {
+    left: 100%;
+  }
+}
+
+/* Cursor de escritura mientras llega el texto. */
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.1em;
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  border-radius: 1px;
+  background: var(--accent-fill);
+  animation: caret 1s steps(1) infinite;
+}
+@keyframes caret {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* Entrada suave de un bloque. */
+.fade-in {
+  animation: fade-in var(--normal) var(--ease-out);
+}
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* ── Superficie de las ventanas emergentes ─────────────────────────── */
+
+/*
+ * La ventana mide exactamente lo que el contenido: sin márgenes ni sombras,
+ * DWM pone el borde, la sombra y las esquinas. En Windows 10 se añade un
+ * trazo interior para que el panel no se funda con lo que tiene detrás.
+ */
+.popup {
+  background: var(--popup-bg);
+  overflow: hidden;
+}
+html[data-backdrop='none'] .popup {
+  box-shadow: inset 0 0 0 1px var(--stroke-surface);
+}
