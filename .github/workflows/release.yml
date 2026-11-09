@@ -1,0 +1,55 @@
+# Publica una release al subir una etiqueta vX.Y.Z:
+#   git tag v0.3.0 && git push origin v0.3.0
+# Compila el instalador NSIS, lo firma para el actualizador y sube latest.json,
+# que es lo que consultan las copias instaladas para actualizarse solas.
+#
+# Secretos necesarios en GitHub (Settings → Secrets and variables → Actions):
+#   TAURI_SIGNING_PRIVATE_KEY           contenido de ~/.tauri/winkit.key
+#   TAURI_SIGNING_PRIVATE_KEY_PASSWORD  vacío si la clave no tiene contraseña
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+
+      - run: npm ci
+
+      - name: Tests
+        run: |
+          npm run typecheck
+          npm test
+          cargo test --manifest-path src-tauri/Cargo.toml
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Winkit ${{ github.ref_name }}
+          releaseBody: 'Descarga `Winkit_*_x64-setup.exe` e instálalo. Si ya tienes Winkit, se actualizará solo.'
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

@@ -1,0 +1,160 @@
+/*
+ * Tokens de Fluent (WinUI 3) para claro y oscuro.
+ * Los valores salen de los recursos de tema de WinUI; los nombres van abreviados.
+ * El acento llega de Windows por `ui.env()` y se escribe en --accent; el resto se deriva.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --font: 'Segoe UI Variable Text', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-display: 'Segoe UI Variable Display', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-small: 'Segoe UI Variable Small', 'Segoe UI Variable', 'Segoe UI', system-ui, sans-serif;
+  --font-icons: 'Segoe Fluent Icons', 'Segoe MDL2 Assets';
+  --font-mono: 'Cascadia Mono', Consolas, 'Courier New', monospace;
+
+  --radius-control: 4px;
+  --radius-surface: 8px;
+  --control-height: 32px;
+
+  --ease: cubic-bezier(0, 0, 0, 1);
+  --ease-out: cubic-bezier(0.1, 0.9, 0.2, 1);
+  --fast: 120ms;
+  --normal: 167ms;
+  --slow: 250ms;
+
+  /* Acento: Windows lo da en su tono medio. En claro se usa más oscuro y en oscuro más claro, como hace WinUI. */
+  --accent: #0078d4;
+  --accent-fill: color-mix(in oklab, var(--accent) 80%, black);
+  --accent-fill-hover: color-mix(in srgb, var(--accent-fill) 90%, transparent);
+  --accent-fill-pressed: color-mix(in srgb, var(--accent-fill) 80%, transparent);
+  --accent-fill-disabled: rgba(0, 0, 0, 0.2169);
+  --accent-text: color-mix(in oklab, var(--accent) 72%, black);
+  --accent-subtle: color-mix(in srgb, var(--accent) 12%, transparent);
+  --accent-subtle-strong: color-mix(in srgb, var(--accent) 20%, transparent);
+  --on-accent: #ffffff;
+  --on-accent-secondary: rgba(255, 255, 255, 0.7);
+
+  /* Texto */
+  --text-1: rgba(0, 0, 0, 0.896);
+  --text-2: rgba(0, 0, 0, 0.606);
+  --text-3: rgba(0, 0, 0, 0.446);
+  --text-disabled: rgba(0, 0, 0, 0.361);
+
+  /* Rellenos de controles */
+  --control: rgba(255, 255, 255, 0.7);
+  --control-hover: rgba(249, 249, 249, 0.5);
+  --control-pressed: rgba(249, 249, 249, 0.3);
+  --control-disabled: rgba(249, 249, 249, 0.3);
+  --control-input-active: #ffffff;
+  --control-strong: rgba(0, 0, 0, 0.446);
+  --control-alt: rgba(0, 0, 0, 0.0241);
+  --control-alt-hover: rgba(0, 0, 0, 0.0578);
+  --subtle-hover: rgba(0, 0, 0, 0.0373);
+  --subtle-pressed: rgba(0, 0, 0, 0.0241);
+
+  /* Trazos */
+  --stroke-control: rgba(0, 0, 0, 0.0578);
+  --stroke-control-2: rgba(0, 0, 0, 0.1622);
+  --stroke-strong: rgba(0, 0, 0, 0.446);
+  --stroke-card: rgba(0, 0, 0, 0.0578);
+  --stroke-divider: rgba(0, 0, 0, 0.0803);
+  --stroke-surface: rgba(117, 117, 117, 0.4);
+  --stroke-accent-2: rgba(0, 0, 0, 0.4);
+  --focus-outer: rgba(0, 0, 0, 0.896);
+  --focus-inner: #ffffff;
+
+  /* Superficies */
+  --card: rgba(255, 255, 255, 0.7);
+  --card-hover: rgba(249, 249, 249, 0.5);
+  --card-secondary: rgba(246, 246, 246, 0.5);
+  --layer: rgba(255, 255, 255, 0.5);
+  --layer-on-acrylic: rgba(255, 255, 255, 0.25);
+  --smoke: rgba(0, 0, 0, 0.3);
+  --solid-base: #f3f3f3;
+  --solid-flyout: #f9f9f9;
+  --solid-secondary: #eeeeee;
+  --solid-tertiary: #f9f9f9;
+
+  /* Estados del sistema */
+  --critical: #c42b1c;
+  --critical-bg: #fde7e9;
+  --success: #0f7b0f;
+  --success-bg: #dff6dd;
+  --caution: #9d5d00;
+  --caution-bg: #fff4ce;
+  --diff-add: color-mix(in srgb, #0f7b0f 16%, transparent);
+  --diff-add-text: #0b5a0b;
+  --diff-del: color-mix(in srgb, #c42b1c 12%, transparent);
+  --diff-del-text: #a1260d;
+
+  /* Fondo de la ventana. Con acrílico/Mica, transparente: el material lo pone Windows. */
+  --window-bg: transparent;
+  --popup-bg: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --accent-fill: color-mix(in oklab, var(--accent) 52%, white);
+    --accent-fill-disabled: rgba(255, 255, 255, 0.1581);
+    --accent-text: color-mix(in oklab, var(--accent) 45%, white);
+    --accent-subtle: color-mix(in srgb, var(--accent-fill) 14%, transparent);
+    --accent-subtle-strong: color-mix(in srgb, var(--accent-fill) 22%, transparent);
+    --on-accent: #000000;
+    --on-accent-secondary: rgba(0, 0, 0, 0.5);
+
+    --text-1: #ffffff;
+    --text-2: rgba(255, 255, 255, 0.786);
+    --text-3: rgba(255, 255, 255, 0.544);
+    --text-disabled: rgba(255, 255, 255, 0.3628);
+
+    --control: rgba(255, 255, 255, 0.0605);
+    --control-hover: rgba(255, 255, 255, 0.0837);
+    --control-pressed: rgba(255, 255, 255, 0.0326);
+    --control-disabled: rgba(255, 255, 255, 0.0419);
+    --control-input-active: rgba(30, 30, 30, 0.7);
+    --control-strong: rgba(255, 255, 255, 0.5442);
+    --control-alt: rgba(0, 0, 0, 0.1);
+    --control-alt-hover: rgba(255, 255, 255, 0.0419);
+    --subtle-hover: rgba(255, 255, 255, 0.0605);
+    --subtle-pressed: rgba(255, 255, 255, 0.0419);
+
+    --stroke-control: rgba(255, 255, 255, 0.0698);
+    --stroke-control-2: rgba(255, 255, 255, 0.0930);
+    --stroke-strong: rgba(255, 255, 255, 0.5442);
+    --stroke-card: rgba(0, 0, 0, 0.1);
+    --stroke-divider: rgba(255, 255, 255, 0.0837);
+    --stroke-surface: rgba(117, 117, 117, 0.4);
+    --stroke-accent-2: rgba(0, 0, 0, 0.14);
+    --focus-outer: #ffffff;
+    --focus-inner: rgba(0, 0, 0, 0.7);
+
+    --card: rgba(255, 255, 255, 0.0512);
+    --card-hover: rgba(255, 255, 255, 0.0698);
+    --card-secondary: rgba(255, 255, 255, 0.0326);
+    --layer: rgba(58, 58, 58, 0.3);
+    --layer-on-acrylic: rgba(255, 255, 255, 0.0359);
+    --smoke: rgba(0, 0, 0, 0.3);
+    --solid-base: #202020;
+    --solid-flyout: #2c2c2c;
+    --solid-secondary: #1c1c1c;
+    --solid-tertiary: #282828;
+
+    --critical: #ff99a4;
+    --critical-bg: #442726;
+    --success: #6ccb5f;
+    --success-bg: #393d1b;
+    --caution: #fce100;
+    --caution-bg: #433519;
+    --diff-add: color-mix(in srgb, #6ccb5f 18%, transparent);
+    --diff-add-text: #9be38f;
+    --diff-del: color-mix(in srgb, #ff99a4 16%, transparent);
+    --diff-del-text: #ffb3bb;
+  }
+}
+
+/* Windows 10: sin acrílico ni Mica, fondos sólidos. */
+html[data-backdrop='none'] {
+  --window-bg: var(--solid-base);
+  --popup-bg: var(--solid-flyout);
+}

@@ -1,3 +1,9 @@
+/**
+ * Contrato entre el backend en Rust (src-tauri) y las ventanas en React.
+ * Los nombres de campo coinciden con los structs de Rust (serde camelCase):
+ * si cambias algo aquí, cámbialo también en `src-tauri/src/settings.rs` y `src-tauri/src/ipc.rs`.
+ */
+
 export const MODELS = [
   { id: 'claude-haiku-5-5', label: 'Haiku 5.5', hint: 'Rápido y barato. Ideal para corregir.' },
   { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5', hint: 'Más fino con traducciones y textos largos.' },
@@ -6,16 +12,15 @@ export const MODELS = [
 
 export type ModelId = (typeof MODELS)[number]['id']
 
-/** Acciones integradas. Las personalizadas usan su propio id (`custom:...`). */
-export type BuiltinActionId = 'correct' | 'translate' | 'read' | 'formal' | 'casual' | 'shorter' | 'clearer'
-
 export const SEARCH_ENGINES = {
-  google: { label: 'Google', url: 'https://www.google.com/search?q=' },
-  duckduckgo: { label: 'DuckDuckGo', url: 'https://duckduckgo.com/?q=' },
-  bing: { label: 'Bing', url: 'https://www.bing.com/search?q=' }
+  google: { label: 'Google' },
+  duckduckgo: { label: 'DuckDuckGo' },
+  bing: { label: 'Bing' }
 } as const
 
 export type SearchEngine = keyof typeof SEARCH_ENGINES
+
+export type ColorFormat = 'hex' | 'rgb' | 'hsl'
 
 export interface CustomAction {
   id: string
@@ -23,17 +28,61 @@ export interface CustomAction {
   prompt: string
 }
 
+/** Aceleradores con el formato "Control+Alt+X" (modificadores: Control, Alt, Shift, Super). Vacío = desactivado. */
 export interface Shortcuts {
-  /** Abre la viñeta con el menú de acciones. */
-  menu: string
+  /** Paleta sobre la selección: todas las acciones de escritura y «Entender». */
+  palette: string
   /** Corrige la selección directamente. */
   correct: string
-  /** Traduce la selección al idioma principal (o al secundario si ya está en el principal). */
+  /** Traduce la selección directamente (la dirección la decide la detección de idioma). */
   translate: string
-  /** Abre el lector: el texto seleccionado y su traducción, lado a lado. */
-  reader: string
-  /** Abre el buscador (calculadora, apps, web, Claude). */
+  /** Abre la paleta directamente en «Entender» (el antiguo lector). */
+  understand: string
+  /** Buscador: apps, calculadora, unidades, comandos, web y Claude. */
   launcher: string
+  /** Cuentagotas de color. */
+  colorPicker: string
+  /** Guarda un clip con los últimos minutos de pantalla. */
+  saveClip: string
+}
+
+export type ClipQuality = 'low' | 'medium' | 'high'
+
+/** Clips: la pantalla se graba en un búfer circular y el atajo guarda los últimos minutos. */
+export interface Clips {
+  /** Desactivado por defecto: graba la pantalla todo el rato. */
+  enabled: boolean
+  /** Minutos que se guardan (1–30). */
+  minutes: number
+  /** Carpeta de destino. Vacío = Vídeos\Winkit. */
+  folder: string
+  fps: 30 | 60
+  quality: ClipQuality
+  systemAudio: boolean
+  microphone: boolean
+  /** Monitor que se graba (id de `clips.monitors()`). Vacío = el principal. */
+  monitor: string
+}
+
+/** Un monitor conectado (para elegir cuál graban los clips). */
+export interface ClipMonitor {
+  /** Id estable: la ruta de dispositivo del monitor. */
+  id: string
+  /** Nombre del monitor («DELL U2720Q») o «Pantalla 2». */
+  name: string
+  width: number
+  height: number
+  primary: boolean
+}
+
+export interface ClipsStatus {
+  state: 'off' | 'starting' | 'recording' | 'error'
+  /** Error legible o detalle (p. ej. el codificador en uso: "NVIDIA NVENC"). */
+  message: string | null
+  /** Segundos que hay ahora mismo en el búfer (lo que se guardaría). */
+  bufferedSeconds: number
+  /** Carpeta real donde se guardan (resuelta si `folder` está vacío). */
+  folder: string
 }
 
 export interface Settings {
@@ -43,81 +92,89 @@ export interface Settings {
   directAutoReplace: boolean
   /** Si no hay nada seleccionado, selecciona todo el campo (Ctrl+A) antes de copiar. */
   selectAllFallback: boolean
+  /** Idiomas que aparecen como destino, en español ("Inglés", "Francés"…). */
   languages: string[]
+  /** Tu idioma: al que se traduce lo que te escriben («Entender») y lo que ya está en el idioma de destino. */
+  myLanguage: string
+  /** Idioma al que traduces lo que escribes tú. */
   translateTarget: string
-  translateFallback: string
   customActions: CustomAction[]
   launchAtLogin: boolean
-  /** Idioma al que el lector traduce lo que te escriben. */
-  readerLanguage: string
   searchEngine: SearchEngine
+  colorFormat: ColorFormat
+  clips: Clips
 }
 
-export const DEFAULT_SETTINGS: Settings = {
-  model: 'claude-haiku-5-5',
-  shortcuts: {
-    menu: 'Control+Alt+X',
-    correct: 'Control+Alt+C',
-    translate: 'Control+Alt+T',
-    reader: 'Control+Alt+L',
-    launcher: 'Alt+Space'
-  },
-  directAutoReplace: true,
-  selectAllFallback: true,
-  languages: ['Inglés', 'Español', 'Catalán', 'Francés', 'Italiano', 'Alemán', 'Portugués'],
-  translateTarget: 'Inglés',
-  translateFallback: 'Español',
-  customActions: [],
-  launchAtLogin: true,
-  readerLanguage: 'Español',
-  searchEngine: 'google'
-}
+/** Acciones integradas de la paleta. Las personalizadas usan su id (`custom:...`). */
+export type BuiltinAction = 'correct' | 'translate' | 'understand' | 'improve' | 'formal' | 'casual' | 'shorter'
 
-/** Lo que se le pide a Claude: una acción y, si es traducir, el idioma. */
 export interface RunRequest {
-  action: BuiltinActionId | string
+  /** Acción integrada, id de una personalizada, o 'instruction' para una instrucción libre. */
+  action: BuiltinAction | 'instruction' | string
+  text: string
+  /** Idioma de destino para 'translate' / 'understand'. Si falta, lo decide la detección. */
   language?: string
+  /** Texto de la instrucción libre cuando `action` es 'instruction'. */
+  instruction?: string
 }
 
-export type PopupView =
-  | { kind: 'menu'; text: string }
-  /** Atajo directo: la viñeta solo muestra el progreso y el resultado. */
-  | { kind: 'run'; text: string; request: RunRequest; autoReplace: boolean }
-  | { kind: 'notice'; message: string; openSettings?: boolean }
+/** Resultado de detectar el idioma de un texto, ya con los destinos calculados. */
+export interface LanguageInfo {
+  /** Idioma detectado (nombre en español) o null si el texto es corto o ambiguo. */
+  detected: string | null
+  /** Destino de «Traducir»: tu idioma de destino, o tu idioma si el texto ya estaba en el de destino. */
+  translateTo: string
+  /** Destino de «Entender»: tu idioma, o el de destino si el texto ya estaba en el tuyo. */
+  understandTo: string
+}
 
-export interface PopupInit {
-  view: PopupView
+export type RunEvent =
+  /** Primer evento: modelo y, si es una traducción, de qué idioma a cuál. */
+  | { type: 'start'; model: string; from: string | null; to: string | null }
+  /** Texto acumulado hasta ahora (no solo el trozo nuevo). */
+  | { type: 'delta'; text: string }
+  | { type: 'done'; text: string }
+  | { type: 'error'; message: string; openSettings: boolean }
+
+export type PaletteMode =
+  /** Lista de acciones sobre el texto capturado. */
+  | 'menu'
+  /** Atajo directo: la paleta solo muestra el progreso y el resultado de `request`. */
+  | 'run'
+  /** Panel grande: original y traducción lado a lado, sin tocar la app de origen. */
+  | 'understand'
+  /** Aviso breve (sin texto seleccionado, color copiado…). Se cierra solo salvo que `openSettings`. */
+  | 'notice'
+
+export interface PaletteInit {
+  /** Cambia en cada apertura: sirve para reiniciar el estado de la ventana. */
+  session: number
+  mode: PaletteMode
+  /** Texto capturado (vacío en «Entender» abierto desde la bandeja o el buscador). */
+  text: string
+  language: LanguageInfo
+  /** Solo en mode 'run'. */
+  request: RunRequest | null
+  /** Solo en mode 'run': Rust pegará el resultado él solo al terminar. */
+  autoReplace: boolean
+  /** Hay una ventana de origen donde pegar. False si se abrió sin selección. */
+  canReplace: boolean
+  notice: { message: string; openSettings: boolean; color: string | null } | null
   languages: string[]
+  myLanguage: string
   translateTarget: string
   customActions: CustomAction[]
   modelLabel: string
 }
 
-export type RunEvent = (
-  | { type: 'delta'; text: string }
-  | { type: 'done'; text: string }
-  | { type: 'error'; message: string; openSettings?: boolean }
-) & {
-  /** Petición a la que pertenece, en las ventanas que pueden lanzar varias seguidas. */
-  id?: number
-}
-
-export interface ReaderInit {
-  text: string
-  language: string
-  languages: string[]
-  modelLabel: string
-}
-
-/** Una app del menú Inicio: acceso directo (.lnk/.url) o app de la Tienda (AppID). */
 export interface AppEntry {
+  /** Nombre de análisis del shell (AUMID o ruta): se le pasa tal cual a `launchApp`. */
   id: string
   name: string
-  kind: 'shortcut' | 'store'
 }
 
 export interface LauncherInit {
-  apps: AppEntry[]
+  session: number
   engineLabel: string
   modelLabel: string
 }
@@ -130,4 +187,35 @@ export interface ShortcutStatus {
 export interface KeyTestResult {
   ok: boolean
   message: string
+}
+
+export interface SettingsState {
+  settings: Settings
+  hasKey: boolean
+  /** La key viene de la variable de entorno ANTHROPIC_API_KEY: no se puede cambiar desde Ajustes. */
+  keyFromEnv: boolean
+  shortcuts: ShortcutStatus[]
+  version: string
+}
+
+/** Entorno visual, igual para todas las ventanas. */
+export interface UiEnv {
+  /** 'acrylic' en Windows 11 (la ventana es translúcida); 'none' en Windows 10 (fondo sólido). */
+  backdrop: 'acrylic' | 'none'
+  /** Color de acento de Windows, "#rrggbb". */
+  accent: string
+}
+
+export interface UpdateStatus {
+  /**
+   * idle: aún no se ha comprobado · checking · downloading · ready: descargada,
+   * se instala al reiniciar · upToDate · error
+   */
+  state: 'idle' | 'checking' | 'downloading' | 'ready' | 'upToDate' | 'error'
+  /** Versión nueva (en downloading/ready). */
+  version: string | null
+  /** 0–1 durante la descarga, si se conoce el tamaño. */
+  progress: number | null
+  /** Notas de la release o mensaje de error. */
+  message: string | null
 }
