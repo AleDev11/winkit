@@ -6,6 +6,7 @@ use crate::win::dpapi;
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
@@ -83,10 +84,99 @@ pub struct CustomAction {
     pub prompt: String,
 }
 
+// ---------------------------------------------------------------- IA y voz
+
+/// Qué modelo usa algo: proveedor + id del modelo en ese proveedor.
+/// Proveedores: "anthropic", "openai", "deepseek", "gemini", "openrouter",
+/// "custom" (cualquier API compatible con OpenAI) y "local" (IA local de Winkit).
+#[derive(Clone, Serialize, Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct ModelRef {
+    pub provider: String,
+    pub model: String,
+}
+
+impl Default for ModelRef {
+    fn default() -> Self {
+        Self { provider: "anthropic".into(), model: "claude-haiku-5-5".into() }
+    }
+}
+
+/// Servidor propio compatible con la API de OpenAI (vLLM, LM Studio, Ollama remoto…).
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct CustomProvider {
+    /// Nombre que se ve en Winkit ("Mi servidor").
+    pub name: String,
+    /// Raíz de la API, p. ej. "http://192.168.1.20:8000/v1".
+    pub base_url: String,
+}
+
+/// IA local: Winkit descarga el motor (llama.cpp) y el modelo al activarla.
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct LocalAi {
+    pub enabled: bool,
+    /// Id del modelo en el catálogo de Winkit ("" = ninguno instalado aún).
+    pub model: String,
+    /// Usar la GPU si la hay (Vulkan). Sin GPU o con false, CPU.
+    pub gpu: bool,
+    /// Tokens de contexto.
+    pub context: u32,
+    /// Minutos sin usarse tras los que se descarga de la memoria (0 = nunca).
+    /// Importante para no ocupar VRAM mientras juegas.
+    pub unload_after_minutes: u32,
+}
+
+impl Default for LocalAi {
+    fn default() -> Self {
+        Self { enabled: false, model: String::new(), gpu: true, context: 8192, unload_after_minutes: 5 }
+    }
+}
+
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Ai {
+    /// El que se usa si una herramienta no tiene uno propio.
+    pub default: ModelRef,
+    /// Por herramienta: "writing" (paleta y atajos directos), "understand"
+    /// («Entender»), "launcher" (preguntas del buscador), "assistant" (el
+    /// asistente, más adelante). Si falta, se usa `default`.
+    pub tools: BTreeMap<String, ModelRef>,
+    pub custom: CustomProvider,
+    pub local: LocalAi,
+}
+
+impl Ai {
+    /// El modelo de una herramienta (el suyo o el predeterminado).
+    pub fn for_tool(&self, tool: &str) -> ModelRef {
+        self.tools.get(tool).filter(|m| !m.provider.is_empty()).cloned().unwrap_or_else(|| self.default.clone())
+    }
+}
+
+/// Voz (texto a voz).
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct Voice {
+    /// "windows" (sin descargas), "kokoro" (local, se descarga), "elevenlabs" o "openai".
+    pub engine: String,
+    /// Id de la voz en ese motor ("" = la predeterminada del motor).
+    pub voice: String,
+    /// Velocidad: 1.0 = normal (0.5–2.0).
+    pub speed: f32,
+    /// Volumen 0.0–1.0.
+    pub volume: f32,
+}
+
+impl Default for Voice {
+    fn default() -> Self {
+        Self { engine: "windows".into(), voice: String::new(), speed: 1.0, volume: 1.0 }
+    }
+}
+
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
-    pub model: String,
     pub shortcuts: Shortcuts,
     pub direct_auto_replace: bool,
     pub select_all_fallback: bool,
@@ -101,12 +191,13 @@ pub struct Settings {
     /// "topLeft" o "cursor" (junto al ratón).
     pub notice_position: String,
     pub clips: Clips,
+    pub ai: Ai,
+    pub voice: Voice,
 }
 
 impl Default for Settings {
     fn default() -> Self {
         Self {
-            model: "claude-haiku-5-5".into(),
             shortcuts: Shortcuts::default(),
             direct_auto_replace: true,
             select_all_fallback: true,
@@ -121,6 +212,8 @@ impl Default for Settings {
             color_format: "hex".into(),
             notice_position: "bottomRight".into(),
             clips: Clips::default(),
+            ai: Ai::default(),
+            voice: Voice::default(),
         }
     }
 }
@@ -128,9 +221,21 @@ impl Default for Settings {
 pub const MODELS: [(&str, &str); 3] =
     [("claude-haiku-5-5", "Haiku 5.5"), ("claude-sonnet-5-5", "Sonnet 5.5"), ("claude-opus-5-5", "Opus 5.5")];
 
+/// Nombre legible de un modelo («Haiku 5.5»). Los de Claude con su nombre corto; el
+/// resto, con su id.
+pub fn model_label(m: &ModelRef) -> String {
+    if m.provider == "anthropic" {
+        if let Some((_, l)) = MODELS.iter().find(|(id, _)| *id == m.model) {
+            return l.to_string();
+        }
+    }
+    m.model.clone()
+}
+
 impl Settings {
+    /// El modelo predeterminado, legible. Para el de una herramienta: `model_label(&s.ai.for_tool(..))`.
     pub fn model_label(&self) -> String {
-        MODELS.iter().find(|(id, _)| *id == self.model).map_or(self.model.clone(), |(_, l)| l.to_string())
+        model_label(&self.ai.default)
     }
 
     pub fn search_url(&self, query: &str) -> String {
@@ -184,6 +289,12 @@ fn migrate(mut v: Value) -> Value {
             sc.entry("understand").or_insert(reader);
         }
     }
+    // 0.2.x: un solo campo "model" (siempre de Claude) → ai.default.
+    if !obj.contains_key("ai") {
+        if let Some(Value::String(model)) = obj.remove("model") {
+            obj.insert("ai".into(), serde_json::json!({ "default": { "provider": "anthropic", "model": model } }));
+        }
+    }
     if !obj.contains_key("myLanguage") {
         if let Some(lang) = obj.get("readerLanguage").or_else(|| obj.get("translateFallback")).cloned() {
             obj.insert("myLanguage".into(), lang);
@@ -223,35 +334,75 @@ pub fn save_patch(patch: Value) -> Result<Settings, String> {
     Ok(next)
 }
 
-// ---------------------------------------------------------------- API key
+// ---------------------------------------------------------------- API keys
 
-fn key_file() -> PathBuf {
-    dir().join("apikey.bin")
+/// Una key por proveedor ("anthropic", "openai", "deepseek", "gemini",
+/// "openrouter", "custom", "elevenlabs"), cifrada con DPAPI. La de Anthropic
+/// sigue en apikey.bin para no perder la de versiones anteriores.
+fn key_file_for(provider: &str) -> PathBuf {
+    match provider {
+        "anthropic" => dir().join("apikey.bin"),
+        p => dir().join("keys").join(format!("{p}.bin")),
+    }
 }
 
-pub fn key_from_env() -> Option<String> {
-    std::env::var("ANTHROPIC_API_KEY").ok().filter(|k| !k.trim().is_empty())
+/// Variable de entorno que, si existe, manda sobre la key guardada.
+pub fn key_env_var(provider: &str) -> Option<&'static str> {
+    Some(match provider {
+        "anthropic" => "ANTHROPIC_API_KEY",
+        "openai" => "OPENAI_API_KEY",
+        "deepseek" => "DEEPSEEK_API_KEY",
+        "gemini" => "GEMINI_API_KEY",
+        "openrouter" => "OPENROUTER_API_KEY",
+        "elevenlabs" => "ELEVENLABS_API_KEY",
+        _ => return None,
+    })
 }
 
-pub fn api_key() -> Option<String> {
-    if let Some(k) = key_from_env() {
+pub fn provider_key_from_env(provider: &str) -> Option<String> {
+    std::env::var(key_env_var(provider)?).ok().filter(|k| !k.trim().is_empty())
+}
+
+pub fn provider_key(provider: &str) -> Option<String> {
+    if let Some(k) = provider_key_from_env(provider) {
         return Some(k);
     }
-    let blob = std::fs::read(key_file()).ok()?;
+    let blob = std::fs::read(key_file_for(provider)).ok()?;
     String::from_utf8(dpapi::unprotect(&blob)?).ok().filter(|k| !k.is_empty())
 }
 
-pub fn set_api_key(key: &str) -> Result<(), String> {
+pub fn set_provider_key(provider: &str, key: &str) -> Result<(), String> {
     let blob = dpapi::protect(key.trim().as_bytes()).ok_or("No se ha podido cifrar la API key.")?;
-    std::fs::create_dir_all(dir()).map_err(|e| e.to_string())?;
-    std::fs::write(key_file(), blob).map_err(|e| e.to_string())
+    let file = key_file_for(provider);
+    if let Some(parent) = file.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    std::fs::write(file, blob).map_err(|e| e.to_string())
+}
+
+pub fn remove_provider_key(provider: &str) {
+    let _ = std::fs::remove_file(key_file_for(provider));
+}
+
+// La de Anthropic, con los nombres de siempre.
+
+pub fn key_from_env() -> Option<String> {
+    provider_key_from_env("anthropic")
+}
+
+pub fn api_key() -> Option<String> {
+    provider_key("anthropic")
+}
+
+pub fn set_api_key(key: &str) -> Result<(), String> {
+    set_provider_key("anthropic", key)
 }
 
 /// La versión de Electron guardaba la key con `safeStorage`: AES-256-GCM con una
 /// clave protegida por DPAPI en el archivo "Local State" de Chromium. Se recupera
 /// una vez y se vuelve a guardar con DPAPI directamente.
 pub fn migrate_electron_key() {
-    if key_file().exists() {
+    if key_file_for("anthropic").exists() {
         return;
     }
     let recover = || -> Option<String> {

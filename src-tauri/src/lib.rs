@@ -3,6 +3,7 @@
 
 #[macro_use]
 mod log;
+mod ai;
 mod claude;
 mod ipc;
 mod lang;
@@ -14,6 +15,7 @@ mod settings;
 mod shortcuts;
 mod ui;
 mod updater;
+mod voice;
 mod win;
 
 use tauri::image::Image;

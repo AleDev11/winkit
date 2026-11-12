@@ -1,6 +1,18 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
+  AiTestResult,
+  AiTool,
+  LocalAiStatus,
+  LocalModel,
+  ModelInfo,
+  ModelRef,
+  ProviderId,
+  ProviderInfo,
+  VoiceEngineId,
+  VoiceEngineInfo,
+  VoiceInfo,
+  VoiceStatus,
   AudioDevices,
   ClipMonitor,
   ClipsStatus,
@@ -167,4 +179,56 @@ export const updates = {
   check: (): Promise<UpdateStatus> => invoke('update_check'),
   /** Instala la versión descargada y reinicia Winkit. */
   restart: (): Promise<void> => invoke('update_restart')
+}
+
+/**
+ * IA de texto: proveedores, keys, modelos e IA local (src-tauri/src/ai/).
+ * El proveedor y modelo de cada herramienta se guardan con `settings.save({ ai })`.
+ */
+export const ai = {
+  providers: (): Promise<ProviderInfo[]> => invoke('ai_providers'),
+  /** Prueba la key contra el proveedor y, si funciona, la guarda cifrada. */
+  saveKey: (provider: ProviderId, key: string): Promise<KeyTestResult> => invoke('ai_save_key', { provider, key }),
+  removeKey: (provider: ProviderId): Promise<void> => invoke('ai_remove_key', { provider }),
+  /** Modelos disponibles en ese proveedor (consultados en vivo; los locales, los instalados). */
+  models: (provider: ProviderId): Promise<ModelInfo[]> => invoke('ai_models', { provider }),
+  /** Pide una respuesta corta al modelo para comprobar que funciona. */
+  test: (model: ModelRef): Promise<AiTestResult> => invoke('ai_test', { model }),
+  /** El modelo que usa ahora una herramienta, ya resuelto (el suyo o el predeterminado). */
+  modelFor: (tool: AiTool): Promise<ModelRef> => invoke('ai_model_for', { tool })
+}
+
+/** IA local: motor llama.cpp y modelos, descargados por Winkit al activarla. */
+export const localAi = {
+  catalog: (): Promise<LocalModel[]> => invoke('local_ai_catalog'),
+  status: (): Promise<LocalAiStatus> => invoke('local_ai_status'),
+  onStatus: (cb: (s: LocalAiStatus) => void) => subscribe<LocalAiStatus>('local-ai:status', cb),
+  /** Descarga (motor si falta + modelo), verifica y lo deja listo. El progreso llega por `onStatus`. */
+  install: (model: string): Promise<void> => invoke('local_ai_install', { model }),
+  cancel: (): Promise<void> => invoke('local_ai_cancel'),
+  remove: (model: string): Promise<void> => invoke('local_ai_remove', { model }),
+  /** Libera la memoria (GPU/RAM) ahora; se vuelve a cargar al usarla. */
+  unload: (): Promise<void> => invoke('local_ai_unload'),
+  openFolder: (): Promise<void> => invoke('local_ai_open_folder')
+}
+
+/** Voz: texto a voz con el motor de Ajustes (src-tauri/src/voice/). */
+export const voice = {
+  engines: (): Promise<VoiceEngineInfo[]> => invoke('voice_engines'),
+  voices: (engine: VoiceEngineId): Promise<VoiceInfo[]> => invoke('voice_voices', { engine }),
+  /** Key de ElevenLabs (la de OpenAI se comparte con `ai.saveKey('openai')`). */
+  saveKey: (engine: VoiceEngineId, key: string): Promise<KeyTestResult> => invoke('voice_save_key', { engine, key }),
+  removeKey: (engine: VoiceEngineId): Promise<void> => invoke('voice_remove_key', { engine }),
+  /**
+   * Lee el texto en voz alta (corta lo que estuviera sonando). Sin `engine`/`voice`,
+   * los de Ajustes. Vuelve en cuanto empieza a sonar; el estado llega por `onStatus`.
+   */
+  speak: (text: string, engine?: VoiceEngineId, voiceId?: string): Promise<void> =>
+    invoke('voice_speak', { text, engine: engine ?? null, voice: voiceId ?? null }),
+  stop: (): Promise<void> => invoke('voice_stop'),
+  status: (): Promise<VoiceStatus> => invoke('voice_status'),
+  onStatus: (cb: (s: VoiceStatus) => void) => subscribe<VoiceStatus>('voice:status', cb),
+  /** Descarga el motor local (Kokoro). */
+  install: (engine: VoiceEngineId): Promise<void> => invoke('voice_install', { engine }),
+  remove: (engine: VoiceEngineId): Promise<void> => invoke('voice_remove', { engine })
 }

@@ -236,14 +236,14 @@ pub async fn run(
         req.text,
         reminder(req, fallback)
     );
-    let text = stream(&key, &s.model, SYSTEM, content, on_delta).await?;
+    let text = stream(&key, &s.ai.default.model, SYSTEM, content, on_delta).await?;
     Ok(if req.action == "understand" { text.trim().to_string() } else { keep_edges(&req.text, &text) })
 }
 
 /// Pregunta suelta desde el buscador.
 pub async fn ask(s: &Settings, question: &str, on_delta: &(dyn Fn(&str) + Send + Sync)) -> Result<String, Failure> {
     let key = crate::settings::api_key().ok_or_else(|| Failure::settings("Falta tu API key de Anthropic."))?;
-    stream(&key, &s.model, ASK_SYSTEM, question.to_string(), on_delta).await
+    stream(&key, &s.ai.default.model, ASK_SYSTEM, question.to_string(), on_delta).await
 }
 
 pub async fn test_key(key: &str) -> Result<(), Failure> {

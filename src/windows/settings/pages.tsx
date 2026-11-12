@@ -91,8 +91,8 @@ export function GeneralPage({ s, state, save, setState }: PageProps): React.JSX.
           below={
             <RadioList<ModelId>
               name="model"
-              value={s.model}
-              onChange={(model) => save({ model })}
+              value={s.ai.default.model as ModelId}
+              onChange={(model) => save({ ai: { ...s.ai, default: { provider: 'anthropic', model } } })}
               options={MODELS.map((m) => ({ value: m.id, label: m.label, hint: m.hint }))}
             />
           }
