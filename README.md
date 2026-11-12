@@ -150,7 +150,20 @@ npm run build      # instalador NSIS en src-tauri/target/release/bundle/nsis/
 1. Sube la versión en `package.json` (Tauri la lee de ahí) y en `src-tauri/Cargo.toml`.
 2. `git tag v0.3.1 && git push origin v0.3.1`.
 
-El workflow `.github/workflows/release.yml` pasa los tests, compila el instalador, lo firma y publica la release con `latest.json`, que es lo que consultan las copias instaladas. Necesita el secreto `TAURI_SIGNING_PRIVATE_KEY` (el contenido de la clave privada de firma) y, si la clave tiene contraseña, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Si se pierde la clave privada, las copias instaladas dejan de poder actualizarse.
+El workflow `.github/workflows/release.yml` pasa los tests, compila Winkit, monta el instalador con Inno Setup, lo firma y publica la release con `latest.json`, que es lo que consultan las copias instaladas. Necesita el secreto `TAURI_SIGNING_PRIVATE_KEY` (el contenido de la clave privada de firma) y, si la clave tiene contraseña, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. Si se pierde la clave privada, las copias instaladas dejan de poder actualizarse.
+
+### Instalador
+
+El instalador está hecho con [Inno Setup](https://jrsoftware.org/isinfo.php) (6.7 o posterior), pero no usa su asistente: la ventana es propia, sin bordes y con las esquinas redondeadas de Windows 11, y todo se dibuja con GDI+ con los mismos tokens de Fluent que la app. Coge el acento y el modo claro u oscuro de Windows.
+
+```
+npm run tauri build -- --no-bundle
+iscc installer\winkit.iss
+```
+
+El resultado queda en `installer/Output/`. Para ver las pantallas sin instalar nada, compila con `/DPREVIEW` y abre el `.exe` con `/DEMO=welcome` (o `options`, `installing`, `update`, `done`, `cancel`, `error`), y opcionalmente `/THEME=light|dark` y `/ACCENT=0078D4`.
+
+El actualizador de la app lo lanza con `/P /UPDATE /R`: entonces se salta las pantallas, instala con la ventana de progreso y vuelve a abrir Winkit. Al instalar encima de una versión que vino con el instalador NSIS anterior, quita su entrada de «Aplicaciones» para que Winkit no salga dos veces.
 
 ```
 src-tauri/src/        backend en Rust
@@ -170,6 +183,7 @@ src/components/       piezas comunes (desplegable, botón de leer, logo…)
 src/shared/           contrato de tipos, calculadora, unidades, comandos, diff
 src/lib/api.ts        puente con Rust (invoke y eventos)
 src/dev/mock.ts       datos de ejemplo para diseñar en el navegador
+installer/            instalador de Inno Setup: winkit.iss (qué instala) y ui.iss (la interfaz)
 ```
 
 ## Licencia
