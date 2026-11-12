@@ -78,7 +78,6 @@ impl Ring {
         self.doomed.clear();
     }
 
-    #[cfg(test)]
     pub fn len(&self) -> usize {
         self.segments.len()
     }

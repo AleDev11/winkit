@@ -268,6 +268,19 @@ pub fn clips_monitors() -> Vec<crate::replay::MonitorOption> {
     crate::replay::monitors()
 }
 
+/// Micrófonos y salidas de audio activos (asíncrono: enumerar con COM no debe
+/// bloquear el hilo de la ventana).
+#[tauri::command]
+pub async fn clips_audio_devices() -> crate::replay::AudioDevices {
+    crate::replay::audio_devices()
+}
+
+/// Nivel del micrófono elegido, para el medidor de Ajustes (se consulta ~10 veces por segundo).
+#[tauri::command]
+pub async fn clips_mic_level(device: String) -> f32 {
+    crate::replay::mic_level(&device)
+}
+
 /// Selector de carpeta nativo; guarda la elegida en ajustes.
 #[tauri::command]
 pub async fn clips_choose_folder() -> Option<String> {

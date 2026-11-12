@@ -114,7 +114,16 @@ fn run(segs: &[Segment], cut: i64, out: &Path) -> Result<Clip> {
     let types = stream_types(&reader(&first.path)?);
     let video = types.iter().position(is_video).ok_or_else(|| windows::core::Error::from(MF_E_INVALIDMEDIATYPE))? as u32;
     // El clip empieza en un fotograma clave: como mucho 2 s antes del corte.
-    let clip_start = first.start + keyframe_before(&first.path, video, (cut - first.start).max(0))?;
+    let keyframe = first.start + keyframe_before(&first.path, video, (cut - first.start).max(0))?;
+    // El clip arranca en la trama AAC (rejilla de 1024 muestras del reloj de la
+    // época) que contiene ese fotograma clave: el audio empieza justo en 0 y el
+    // vídeo como mucho 21 ms después. Si el bucle se ha saltado fotogramas, el
+    // codificador pone los clave fuera de la rejilla (cuenta fotogramas, no
+    // tiempo), y empezar el audio a mitad de trama hace que el MP4 de Media
+    // Foundation reescriba sus duraciones y pierda tramas.
+    let frame = super::encoder::AAC_FRAME as i128;
+    let grid = (keyframe as i128 * 48_000 / 10_000_000).div_euclid(frame) * frame;
+    let clip_start = (grid * 10_000_000 / 48_000) as i64;
 
     // El lector no enumera las pistas en el orden del archivo: se añaden en
     // orden fijo, vídeo y luego el audio del sistema (192 kbps) antes que el
@@ -266,7 +275,7 @@ pub fn decode_audio(path: &Path) -> Result<(Vec<i16>, u64)> {
             let at = (ts.max(0) as i128 * 48_000 / 10_000_000) as usize * 2;
             // Tolerancia de una muestra por redondeo de las marcas.
             if at > out.len() + 2 {
-                eprintln!("  hueco en el audio decodificado: {:.3} s, {:.2} ms", out.len() as f64 / 96_000.0, (at - out.len()) as f64 / 96.0);
+                println!("  hueco en el audio decodificado: {:.3} s, {:.2} ms", out.len() as f64 / 96_000.0, (at - out.len()) as f64 / 96.0);
                 missing += ((at - out.len()) / 2) as u64;
                 out.resize(at, 0);
             }

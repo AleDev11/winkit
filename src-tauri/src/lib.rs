@@ -1,6 +1,8 @@
 ﻿//! Winkit: herramientas para Windows con Claude. Vive en la bandeja del sistema
 //! y aparece con atajos globales.
 
+#[macro_use]
+mod log;
 mod claude;
 mod ipc;
 mod lang;
@@ -97,6 +99,9 @@ fn handle_args(args: &[String]) {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    log::install_panic_hook();
+    win::toast::init();
+    log::info("app", &format!("arranca Winkit {}", env!("CARGO_PKG_VERSION")));
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_app, args, _cwd| handle_args(&args)))
         .plugin(tauri_plugin_global_shortcut::Builder::new().with_handler(shortcuts::handler).build())
@@ -136,6 +141,8 @@ pub fn run() {
             ipc::picker_done,
             ipc::clips_status,
             ipc::clips_monitors,
+            ipc::clips_audio_devices,
+            ipc::clips_mic_level,
             ipc::clips_choose_folder,
             ipc::clips_open_folder,
             ipc::clips_save,

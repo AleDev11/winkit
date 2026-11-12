@@ -83,6 +83,63 @@ pub(crate) fn qpc100() -> i64 {
     (c as i128 * 10_000_000 / f.max(1) as i128) as i64
 }
 
+/// Espera a que termine un hilo, pero como mucho `timeout`: si no, se abandona
+/// (sigue suelto hasta que despierte) y queda anotado. Así ni parar ni
+/// reiniciar pueden colgarse por un WASAPI o un driver bloqueado.
+pub(crate) fn join_bounded(t: std::thread::JoinHandle<()>, timeout: Duration, what: &str) {
+    let start = Instant::now();
+    while !t.is_finished() {
+        if start.elapsed() > timeout {
+            crate::log_warn!("clips", "{what} no termina tras {} ms; se abandona", timeout.as_millis());
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let _ = t.join();
+}
+
+/// Prioridad del hilo actual mientras viva el guardián. Con carga (un juego,
+/// una compilación) los hilos normales esperan segundos a la CPU: medido, crear
+/// un segmento pasaba de ~0,3 s a 3 s y unir un clip de 10 s, de ~0,3 s a 8 s.
+pub(crate) struct Boost {
+    mmcss: Option<windows::Win32::Foundation::HANDLE>,
+    old: Option<i32>,
+}
+
+impl Drop for Boost {
+    fn drop(&mut self) {
+        use windows::Win32::System::Threading::{AvRevertMmThreadCharacteristics, GetCurrentThread, SetThreadPriority, THREAD_PRIORITY};
+        unsafe {
+            if let Some(h) = self.mmcss {
+                let _ = AvRevertMmThreadCharacteristics(h);
+            }
+            if let Some(p) = self.old {
+                let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY(p));
+            }
+        }
+    }
+}
+
+/// Prioridad multimedia (MMCSS, «Capture» o «Audio»), como OBS o ShadowPlay. Si
+/// no se puede, prioridad por encima de lo normal.
+pub(crate) fn boost_mmcss(task: &str) -> Boost {
+    use windows::Win32::System::Threading::AvSetMmThreadCharacteristicsW;
+    let mut index = 0u32;
+    match unsafe { AvSetMmThreadCharacteristicsW(&windows::core::HSTRING::from(task), &mut index) } {
+        Ok(h) => Boost { mmcss: Some(h), old: None },
+        Err(_) => boost_above_normal(),
+    }
+}
+
+pub(crate) fn boost_above_normal() -> Boost {
+    use windows::Win32::System::Threading::{GetCurrentThread, GetThreadPriority, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL};
+    unsafe {
+        let old = GetThreadPriority(GetCurrentThread());
+        let changed = old < THREAD_PRIORITY_ABOVE_NORMAL.0 && SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL).is_ok();
+        Boost { mmcss: None, old: changed.then_some(old) }
+    }
+}
+
 fn retention(minutes: u32) -> Duration {
     Duration::from_secs(minutes.clamp(1, 30) as u64 * 60 + SEGMENT_SECS as u64)
 }
@@ -97,6 +154,8 @@ struct Key {
     system_audio: bool,
     microphone: bool,
     monitor: String,
+    system_audio_device: String,
+    microphone_device: String,
 }
 
 impl Key {
@@ -107,6 +166,8 @@ impl Key {
             system_audio: c.system_audio,
             microphone: c.microphone,
             monitor: c.monitor.clone(),
+            system_audio_device: c.system_audio_device.clone(),
+            microphone_device: c.microphone_device.clone(),
         }
     }
 }
@@ -151,6 +212,9 @@ fn control() -> Sender<Msg> {
             match msg {
                 Msg::Apply(c) => {
                     if !c.enabled {
+                        if active.is_some() {
+                            crate::log_info!("clips", "desactivados");
+                        }
                         stop(&mut active);
                         emit();
                         continue;
@@ -164,6 +228,7 @@ fn control() -> Sender<Msg> {
                         emit();
                         continue;
                     }
+                    crate::log_info!("clips", "{} ({} fps, calidad {}, {} min)", if active.is_some() { "reconfigurados" } else { "activados" }, key.fps, key.quality, c.minutes.clamp(1, 30));
                     stop(&mut active);
                     let shared = Arc::new(Shared::new(retention(c.minutes)));
                     let cfg = Config {
@@ -174,6 +239,8 @@ fn control() -> Sender<Msg> {
                         segment_secs: SEGMENT_SECS,
                         dir: buffer_dir(),
                         monitor: key.monitor.clone(),
+                        system_audio_device: key.system_audio_device.clone(),
+                        microphone_device: key.microphone_device.clone(),
                         force_hdr_path: false,
                         synthetic_audio: None,
                     };
@@ -220,6 +287,9 @@ pub fn status() -> ClipsStatus {
     let Some(cur) = guard.as_ref() else {
         return ClipsStatus { state: "starting", ..off };
     };
+    if cur.handle.shared.health.phase() == recorder::Phase::Restarting {
+        return ClipsStatus { state: "starting", message: Some("Reiniciando la grabación…".into()), ..off };
+    }
     let info = cur.handle.shared.info.lock().unwrap().clone();
     let buffered = info.since.map_or(0, |s| s.elapsed().as_secs().min(cur.minutes as u64 * 60) as u32);
     let message = match info.state {
@@ -232,8 +302,13 @@ pub fn status() -> ClipsStatus {
             if info.fallback {
                 m.push_str(&format!(" · El monitor elegido no está conectado: se graba {}", info.monitor));
             }
+            if info.system_fallback.is_some_and(|f| f.load(Ordering::SeqCst)) {
+                m.push_str(" · La salida de audio elegida no está conectada: se usa la predeterminada");
+            }
             if info.microphone.is_some_and(|ok| !ok.load(Ordering::SeqCst)) {
                 m.push_str(" · Micrófono no disponible");
+            } else if info.microphone_fallback.is_some_and(|f| f.load(Ordering::SeqCst)) {
+                m.push_str(" · El micrófono elegido no está conectado: se usa el predeterminado");
             }
             m
         }),
@@ -254,6 +329,38 @@ pub struct MonitorOption {
     pub width: u32,
     pub height: u32,
     pub primary: bool,
+}
+
+/// Un dispositivo de audio para los selectores de Ajustes.
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioDevice {
+    /// Id de WASAPI; es lo que se guarda en `clips.microphoneDevice` / `systemAudioDevice`.
+    pub id: String,
+    /// Nombre de Windows, p. ej. «Micrófono (Yeti Stereo Microphone)».
+    pub name: String,
+    pub is_default: bool,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioDevices {
+    pub inputs: Vec<AudioDevice>,
+    pub outputs: Vec<AudioDevice>,
+}
+
+/// Micrófonos y salidas activos (los desactivados o desconectados no salen).
+pub fn audio_devices() -> AudioDevices {
+    let map = |capture| {
+        audio::endpoints(capture).into_iter().map(|e| AudioDevice { id: e.id, name: e.name, is_default: e.is_default }).collect()
+    };
+    AudioDevices { inputs: map(true), outputs: map(false) }
+}
+
+/// Nivel (0–1) del micrófono `device` para el medidor de Ajustes. Lo abre al
+/// preguntar y se cierra solo 2 s después de la última pregunta.
+pub fn mic_level(device: &str) -> f32 {
+    audio::mic_level(device)
 }
 
 /// Monitores conectados, el principal primero.
@@ -291,7 +398,7 @@ fn save_blocking() -> Result<PathBuf, String> {
     let out = output_path(&folder);
     let started = Instant::now();
     handle.save(minutes * 60, &out)?;
-    eprintln!("clips: guardado {} en {:?}", out.display(), started.elapsed());
+    crate::log_info!("clips", "clip guardado ({}) en {} ms", out.file_name().unwrap_or_default().to_string_lossy(), started.elapsed().as_millis());
     Ok(out)
 }
 

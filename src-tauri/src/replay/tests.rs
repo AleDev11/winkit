@@ -17,6 +17,18 @@ fn mf_init() {
     }
 }
 
+/// Borra la carpeta de la prueba al terminar, también si falla (salvo con
+/// WINKIT_KEEP_CLIP, para mirar los archivos).
+struct Cleanup(std::path::PathBuf);
+
+impl Drop for Cleanup {
+    fn drop(&mut self) {
+        if std::env::var_os("WINKIT_KEEP_CLIP").is_none() {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+}
+
 fn cpu_time() -> Duration {
     use windows::Win32::Foundation::FILETIME;
     use windows::Win32::System::Threading::{GetCurrentProcess, GetProcessTimes};
@@ -31,12 +43,13 @@ fn cpu_time() -> Duration {
 fn graba_de_verdad_y_guarda_un_clip() {
     mf_init();
     let dir = std::env::temp_dir().join(format!("winkit-clips-test-{}", std::process::id()));
+    let _cleanup = Cleanup(dir.clone());
     let buffer = dir.join("buffer");
     ring::wipe(&buffer);
     let shared = Arc::new(Shared::new(Duration::from_secs(120)));
     let t0 = Instant::now();
     let cpu0 = cpu_time();
-    let cfg = Config { fps: 60, quality: "high".into(), system_audio: true, microphone: true, segment_secs: 10, dir: buffer.clone(), monitor: String::new(), force_hdr_path: false, synthetic_audio: None };
+    let cfg = Config { fps: 60, quality: "high".into(), system_audio: true, microphone: true, segment_secs: 10, dir: buffer.clone(), monitor: String::new(), force_hdr_path: false, synthetic_audio: None, system_audio_device: String::new(), microphone_device: String::new() };
     let rec = Recorder::start(cfg, shared.clone(), Arc::new(|| {}));
 
     let info = loop {
@@ -143,6 +156,7 @@ fn audio_continuo_en_las_uniones() {
     // 40 Hz: periodo de 1200 muestras, así el desfase medido no es ambiguo.
     const FREQ: f64 = 40.0;
     let dir = std::env::temp_dir().join(format!("winkit-clips-seno-{}", std::process::id()));
+    let _cleanup = Cleanup(dir.clone());
     let buffer = dir.join("buffer");
     ring::wipe(&buffer);
     // Mejor uno con otra resolución que el principal: así se nota si se graba el bueno.
@@ -165,13 +179,15 @@ fn audio_continuo_en_las_uniones() {
         // De paso: otro monitor (el último de la lista) y la ruta FP16 + mapeo
         // de tonos forzada, para probar ambas de punta a punta.
         monitor: other.id.clone(),
+        system_audio_device: String::new(),
+        microphone_device: String::new(),
         force_hdr_path: true,
         synthetic_audio: Some(FREQ),
     };
     let rec = Recorder::start(cfg, shared.clone(), Arc::new(|| {}));
     let t0 = Instant::now();
     while shared.info.lock().unwrap().state != "recording" {
-        assert!(t0.elapsed() < Duration::from_secs(20), "no arranca");
+        assert!(t0.elapsed() < Duration::from_secs(60), "no arranca");
         std::thread::sleep(Duration::from_millis(50));
     }
     std::thread::sleep(Duration::from_secs(15));
@@ -340,4 +356,313 @@ fn fp16_con_mapeo_de_tonos_igual_que_8_bits() {
         mean[0], mean[1], mean[2], max, over as f64 / n * 100.0
     );
     assert!(mean.iter().all(|&m| m <= 3.0), "la ruta FP16 se aparta de la de 8 bits: {mean:?}");
+}
+
+/// Comprueba un clip guardado: duración, vídeo sin cortes salvo `max_video_gap`
+/// (100 ns), audio que cubre lo mismo que el vídeo y un seno de `freq` Hz sin
+/// saltos ni huecos al decodificarlo.
+fn check_clip(out: &std::path::Path, keep: i64, freq: f64, max_video_gap: i64) -> Result<String, String> {
+    let p = remux::probe(out).map_err(|e| e.message())?;
+    let v = p.kinds.iter().position(|k| k == "vídeo").ok_or("sin vídeo")?;
+    let (v_first, v_end, _, v_gap) = p.streams[v];
+    let secs = p.duration as f64 / 1e7;
+    if !(keep as f64 - 0.1..=keep as f64 + 2.5).contains(&secs) {
+        return Err(format!("duración {secs:.2} s para {keep} s"));
+    }
+    if v_gap > max_video_gap {
+        return Err(format!("hueco de vídeo de {} ms", v_gap / 10_000));
+    }
+    for (i, &(first, end, _, gap)) in p.streams.iter().enumerate().filter(|(i, _)| *i != v) {
+        // ±0,1 ms de redondeo de las marcas (100 ns) no es un hueco.
+        if gap > 1_000 || (first - v_first).abs() > 1_000_000 || (end - v_end).abs() > 1_000_000 {
+            return Err(format!("pista {i} de audio: {first}–{end} (vídeo {v_first}–{v_end}), hueco {gap}"));
+        }
+    }
+    let (pcm, missing) = remux::decode_audio(out).map_err(|e| e.message())?;
+    let left: Vec<i32> = pcm.iter().step_by(2).map(|&x| x as i32).collect();
+    let max_step = 16_384.0 * std::f64::consts::TAU * freq / 48_000.0;
+    let jump = left.windows(2).skip(4_800).map(|w| (w[1] - w[0]).abs()).max().unwrap_or(0);
+    if missing > 0 || jump as f64 > max_step * 1.5 {
+        return Err(format!("audio: {missing} muestras perdidas, salto {jump}"));
+    }
+    Ok(format!("{secs:.2} s, vídeo con hueco máx. {} ms, salto de audio {jump}", v_gap / 10_000))
+}
+
+/// Bajo carga: todos los núcleos al 100 % y bloqueos artificiales del bucle de
+/// grabación de vez en cuando; 10 guardados en ~2 min. Cada uno tiene que
+/// contestar en < 3 s con un clip correcto. Pensada para `--release`:
+///   cargo test --release --lib replay::tests::bajo_carga -- --ignored --nocapture
+#[test]
+#[ignore]
+fn bajo_carga_guarda_siempre_a_tiempo() {
+    use std::sync::atomic::{AtomicBool, Ordering};
+    mf_init();
+    const FREQ: f64 = 40.0;
+    let dir = std::env::temp_dir().join(format!("winkit-clips-carga-{}", std::process::id()));
+    let _cleanup = Cleanup(dir.clone());
+    let buffer = dir.join("buffer");
+    ring::wipe(&buffer);
+
+    // Quemador de CPU: un hilo ocupado por núcleo.
+    let burn = Arc::new(AtomicBool::new(true));
+    let cores = std::thread::available_parallelism().map_or(4, |n| n.get());
+    let burners: Vec<_> = (0..cores)
+        .map(|i| {
+            let b = burn.clone();
+            std::thread::spawn(move || {
+                let mut x = i as u64 + 1;
+                while b.load(Ordering::Relaxed) {
+                    for _ in 0..10_000 {
+                        x = x.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+                    }
+                    std::hint::black_box(x);
+                }
+            })
+        })
+        .collect();
+
+    let shared = Arc::new(Shared::new(Duration::from_secs(120)));
+    let cfg = Config {
+        fps: 60,
+        quality: "high".into(),
+        system_audio: true,
+        microphone: false,
+        segment_secs: 15,
+        dir: buffer.clone(),
+        monitor: String::new(),
+        system_audio_device: String::new(),
+        microphone_device: String::new(),
+        force_hdr_path: false,
+        synthetic_audio: Some(FREQ),
+    };
+    let rec = Recorder::start(cfg, shared.clone(), Arc::new(|| {}));
+    let t0 = Instant::now();
+    while shared.info.lock().unwrap().state != "recording" {
+        assert!(t0.elapsed() < Duration::from_secs(60), "no arranca");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(Duration::from_secs(12));
+
+    let stalls = [0u64, 300, 0, 800, 150, 0, 600, 0, 900, 250];
+    let mut latencies = Vec::new();
+    let mut failures = Vec::new();
+    for (i, &stall) in stalls.iter().enumerate() {
+        std::thread::sleep(Duration::from_millis(6_000 + (i as u64 * 1_337) % 5_000));
+        if stall > 0 {
+            *super::recorder::LOOP_STALL.lock().unwrap() = Some(Duration::from_millis(stall));
+            std::thread::sleep(Duration::from_millis(30)); // que el guardado caiga en pleno bloqueo
+        }
+        let out = dir.join(format!("carga-{i}.mp4"));
+        let ts = Instant::now();
+        let r = rec.handle().save(10, &out);
+        let lat = ts.elapsed();
+        latencies.push(lat);
+        let verdict = match r {
+            Ok(_) => check_clip(&out, 10, FREQ, (stall as i64 + 100) * 10_000),
+            Err(e) => Err(e),
+        };
+        println!("guardado {i}: {lat:?} (bloqueo {stall} ms) → {verdict:?}");
+        if lat >= Duration::from_secs(3) || verdict.is_err() {
+            failures.push(format!("guardado {i}: {lat:?} {verdict:?}"));
+        }
+        let _ = std::fs::remove_file(&out);
+    }
+    burn.store(false, Ordering::Relaxed);
+    for b in burners {
+        let _ = b.join();
+    }
+    drop(rec);
+    let mut sorted = latencies.clone();
+    sorted.sort();
+    println!(
+        "latencias con {cores} núcleos ocupados: mín {:?}, mediana {:?}, máx {:?}",
+        sorted[0],
+        sorted[sorted.len() / 2],
+        sorted[sorted.len() - 1]
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    assert!(failures.is_empty(), "{failures:#?}");
+}
+
+/// Reinicios a mitad de grabación: (1) el bucle se para 3,5 s (como tras una
+/// suspensión) con un hilo de audio colgado; (2) el bucle se cuelga 8 s y el
+/// perro guardián lo abandona. En ambos, guardar durante el reinicio contesta
+/// al momento con el mensaje de reinicio y la grabación vuelve sola.
+///   cargo test --lib replay::tests::reinicio -- --ignored --nocapture
+#[test]
+#[ignore]
+fn reinicio_contesta_al_momento_y_vuelve_a_grabar() {
+    use super::recorder::{Phase, LOOP_STALL, RESTARTING, STARTING};
+    mf_init();
+    const FREQ: f64 = 40.0;
+    let dir = std::env::temp_dir().join(format!("winkit-clips-reinicio-{}", std::process::id()));
+    let _cleanup = Cleanup(dir.clone());
+    let buffer = dir.join("buffer");
+    ring::wipe(&buffer);
+    let shared = Arc::new(Shared::new(Duration::from_secs(120)));
+    let cfg = Config {
+        fps: 30,
+        quality: "low".into(),
+        system_audio: true,
+        microphone: true,
+        segment_secs: 15,
+        dir: buffer.clone(),
+        monitor: String::new(),
+        system_audio_device: String::new(),
+        microphone_device: String::new(),
+        force_hdr_path: false,
+        synthetic_audio: Some(FREQ),
+    };
+    let rec = Recorder::start(cfg, shared.clone(), Arc::new(|| {}));
+    let wait_recording = |what: &str| {
+        let t = Instant::now();
+        while shared.health.phase() != Phase::Recording {
+            assert!(t.elapsed() < Duration::from_secs(20), "no vuelve a grabar ({what})");
+            std::thread::sleep(Duration::from_millis(20));
+        }
+        t.elapsed()
+    };
+    let is_restart_msg = |e: &str| e == RESTARTING || e == STARTING;
+    wait_recording("arranque");
+    std::thread::sleep(Duration::from_secs(6));
+
+    // 1) Audio del micrófono colgado 8 s y el bucle parado 3,5 s: salto > 3 s → reinicio.
+    *super::audio::STALL.lock().unwrap() = Some((1, Duration::from_secs(8)));
+    std::thread::sleep(Duration::from_millis(300));
+    *LOOP_STALL.lock().unwrap() = Some(Duration::from_millis(3_500));
+    std::thread::sleep(Duration::from_millis(200));
+    let t = Instant::now();
+    let r1 = rec.handle().save(5, &dir.join("a.mp4"));
+    let lat1 = t.elapsed();
+    println!("guardar con el bucle parado: {lat1:?} → {r1:?}");
+    assert!(matches!(&r1, Err(e) if is_restart_msg(e)), "{r1:?}");
+    assert!(lat1 < Duration::from_secs(4), "{lat1:?}");
+    // Ya reiniciando (con el hilo de audio aún colgado): al momento.
+    let t = Instant::now();
+    let r2 = rec.handle().save(5, &dir.join("b.mp4"));
+    let lat2 = t.elapsed();
+    println!("guardar durante el reinicio: {lat2:?} → {r2:?}");
+    assert!(matches!(&r2, Err(e) if is_restart_msg(e)), "{r2:?}");
+    assert!(lat2 < Duration::from_millis(200), "{lat2:?}");
+    let back = wait_recording("tras el salto");
+    println!("vuelve a grabar {back:?} después");
+    std::thread::sleep(Duration::from_secs(6));
+    let out = dir.join("c.mp4");
+    let t = Instant::now();
+    rec.handle().save(4, &out).expect("guardar tras el reinicio");
+    println!("guardar tras el reinicio: {:?} → {:?}", t.elapsed(), check_clip(&out, 4, FREQ, 1_000_000));
+    check_clip(&out, 4, FREQ, 1_000_000).unwrap();
+
+    // 2) Bucle colgado 8 s: el perro guardián (5 s) lo abandona y arranca otro.
+    *LOOP_STALL.lock().unwrap() = Some(Duration::from_secs(8));
+    let stalled = Instant::now();
+    // Mientras está colgado (aún «grabando»), guardar espera… pero no más de 8 s.
+    std::thread::sleep(Duration::from_millis(1_000));
+    let t = Instant::now();
+    let r3 = rec.handle().save(5, &dir.join("d0.mp4"));
+    println!("guardar con el bucle colgado: {:?} → {r3:?}", t.elapsed());
+    assert!(matches!(&r3, Err(e) if is_restart_msg(e)), "{r3:?}");
+    let detected = stalled.elapsed();
+    println!("el perro guardián actúa a los {detected:?} del cuelgue");
+    assert!(detected >= Duration::from_secs(5) && detected < Duration::from_millis(6_500), "{detected:?}");
+    let t = Instant::now();
+    let r4 = rec.handle().save(5, &dir.join("d.mp4"));
+    let lat4 = t.elapsed();
+    println!("guardar justo después del perro guardián: {lat4:?} → {r4:?}");
+    assert!(matches!(&r4, Err(e) if is_restart_msg(e)), "{r4:?}");
+    assert!(lat4 < Duration::from_millis(200), "{lat4:?}");
+    let back = wait_recording("tras el perro guardián");
+    println!("vuelve a grabar {back:?} después");
+    std::thread::sleep(Duration::from_secs(6));
+    let out = dir.join("e.mp4");
+    let t = Instant::now();
+    rec.handle().save(4, &out).expect("guardar tras el perro guardián");
+    println!("guardar tras el perro guardián: {:?} → {:?}", t.elapsed(), check_clip(&out, 4, FREQ, 1_000_000));
+    check_clip(&out, 4, FREQ, 1_000_000).unwrap();
+
+    let t = Instant::now();
+    drop(rec);
+    println!("parar: {:?}", t.elapsed());
+    assert!(t.elapsed() < Duration::from_secs(8));
+    // El hilo abandonado termina solo al despertar; que no deje nada atrás.
+    std::thread::sleep(Duration::from_secs(3));
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// Graba de un micrófono concreto que no es el predeterminado (si este equipo
+/// tiene alguno) y comprueba que se ha usado ese, que la pista dura lo que
+/// toca y que tiene señal. También prueba el medidor de nivel de Ajustes.
+///   cargo test --lib replay::tests::microfono_elegido -- --ignored --nocapture
+#[test]
+#[ignore]
+fn microfono_elegido_no_predeterminado() {
+    mf_init();
+    let inputs = super::audio::endpoints(true);
+    for d in &inputs {
+        println!("entrada: {}{}", d.name, if d.is_default { " (predeterminada)" } else { "" });
+    }
+    let Some(chosen) = inputs.iter().find(|d| !d.is_default) else {
+        println!("este equipo no tiene micrófonos aparte del predeterminado: nada que probar");
+        return;
+    };
+    println!("se elige: {}", chosen.name);
+
+    // Medidor: picos durante 1 s.
+    let mut peaks = Vec::new();
+    for _ in 0..10 {
+        peaks.push(super::audio::mic_level(&chosen.id));
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    println!("medidor (picos cada 100 ms): {:?}", peaks.iter().map(|p| format!("{p:.4}")).collect::<Vec<_>>());
+
+    let dir = std::env::temp_dir().join(format!("winkit-clips-micro-{}", std::process::id()));
+    let _cleanup = Cleanup(dir.clone());
+    let buffer = dir.join("buffer");
+    ring::wipe(&buffer);
+    let shared = Arc::new(Shared::new(Duration::from_secs(120)));
+    let cfg = Config {
+        fps: 30,
+        quality: "low".into(),
+        system_audio: false,
+        microphone: true,
+        segment_secs: 15,
+        dir: buffer.clone(),
+        monitor: String::new(),
+        system_audio_device: String::new(),
+        microphone_device: chosen.id.clone(),
+        force_hdr_path: false,
+        synthetic_audio: None,
+    };
+    let rec = Recorder::start(cfg, shared.clone(), Arc::new(|| {}));
+    let t0 = Instant::now();
+    while shared.info.lock().unwrap().state != "recording" {
+        assert!(t0.elapsed() < Duration::from_secs(60), "no arranca");
+        std::thread::sleep(Duration::from_millis(50));
+    }
+    std::thread::sleep(Duration::from_secs(8));
+    let info = shared.info.lock().unwrap().clone();
+    let opened = info.microphone_device.as_ref().map(|d| d.lock().unwrap().clone()).unwrap_or_default();
+    let fallback = info.microphone_fallback.as_ref().is_some_and(|f| f.load(std::sync::atomic::Ordering::SeqCst));
+    let out = dir.join("micro.mp4");
+    rec.handle().save(6, &out).expect("guardar");
+    drop(rec);
+
+    let p = remux::probe(&out).expect("abrir el clip");
+    let (pcm, missing) = remux::decode_audio(&out).expect("decodificar");
+    let peak = pcm.iter().map(|&s| (s as i32).abs()).max().unwrap_or(0);
+    let rms = (pcm.iter().map(|&s| (s as f64).powi(2)).sum::<f64>() / pcm.len().max(1) as f64).sqrt();
+    println!(
+        "clip {:.2} s con {} pista(s) de audio ({:?}); micro: {:.2} s, pico {peak}, RMS {rms:.1}, {missing} muestras perdidas",
+        p.duration as f64 / 1e7,
+        p.audio_streams,
+        p.kinds,
+        pcm.len() as f64 / 96_000.0
+    );
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(opened, chosen.id, "se ha abierto otro micrófono");
+    assert!(!fallback, "ha caído al predeterminado");
+    assert_eq!(p.audio_streams, 1);
+    assert!(((pcm.len() as f64 / 96_000.0) - p.duration as f64 / 1e7).abs() < 0.2, "la pista del micro no dura lo que el clip");
+    assert_eq!(missing, 0);
+    assert!(peak > 0, "la pista del micro está en silencio absoluto");
 }

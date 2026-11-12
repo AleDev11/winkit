@@ -118,14 +118,37 @@ pub fn handler(_app: &AppHandle, sc: &Shortcut, event: ShortcutEvent) {
     }
 }
 
-/// Atajo de clips: guarda los últimos minutos y avisa.
+/// Atajo de clips: guarda los últimos minutos y avisa con el aviso de la paleta
+/// y una notificación de Windows (con «Ver clip» y «Mostrar en la carpeta»).
 pub async fn save_clip() {
+    use crate::win::toast::{self, OnClick};
     let c = settings::get().clips;
     if !c.enabled {
         return palette::notice("Activa los clips en Ajustes para poder guardarlos.", true, None);
     }
+    let started = std::time::Instant::now();
     match crate::replay::save().await {
-        Ok(_) => palette::notice(format!("Clip guardado: últimos {} min", c.minutes), false, None),
-        Err(e) => palette::notice(e, false, None),
+        Ok(path) => {
+            let mb = std::fs::metadata(&path).map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
+            let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+            crate::log_info!("clips", "guardado {name} ({mb:.0} MB) en {} ms", started.elapsed().as_millis());
+            let p = path.to_string_lossy().into_owned();
+            let body = format!("Últimos {} min · {mb:.0} MB\n{name}", c.minutes);
+            // Las dos cosas: el aviso junto al cursor se ve siempre (también con «No
+            // molestar», que Windows no deja detectar) y la notificación queda en el
+            // centro de notificaciones con sus botones.
+            palette::notice(format!("Clip guardado: últimos {} min", c.minutes), false, None);
+            toast::show(
+                "Clip guardado",
+                &body,
+                Some(OnClick::Open(p.clone())),
+                &[("Ver clip", OnClick::Open(p.clone())), ("Mostrar en la carpeta", OnClick::Reveal(p))],
+            );
+        }
+        Err(e) => {
+            crate::log_warn!("clips", "no se ha podido guardar: {e}");
+            toast::show("No se ha podido guardar el clip", &e, Some(OnClick::Settings), &[]);
+            palette::notice(e, false, None);
+        }
     }
 }

@@ -1,5 +1,5 @@
-//! Audio con WASAPI: el del sistema (loopback del dispositivo de salida por
-//! defecto) y el del micrófono. Cada fuente entrega PCM estéreo de 16 bits a
+//! Audio con WASAPI: el del sistema (loopback del dispositivo de salida elegido o
+//! el predeterminado) y el del micrófono elegido. Cada fuente entrega PCM estéreo de 16 bits a
 //! 48 kHz, continuo y alineado con el reloj de la grabación: la muestra `n`
 //! corresponde al instante `n / 48000` s desde el inicio. Cuando el dispositivo
 //! no entrega nada (el loopback calla si no suena nada, o no hay micro) se
@@ -9,12 +9,14 @@ use super::encoder::SAMPLE_RATE;
 use super::qpc100;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 use windows::core::{Result, PWSTR};
 use windows::Win32::Media::Audio::*;
-use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED};
+use windows::Win32::Foundation::PROPERTYKEY;
+use windows::Win32::System::Com::StructuredStorage::PropVariantToStringAlloc;
+use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_ALL, COINIT_MULTITHREADED, STGM_READ};
 
 /// Bloque de PCM estéreo intercalado. `start` es el índice (en muestras por
 /// canal) de su primera muestra; los bloques de una pista son contiguos.
@@ -36,25 +38,35 @@ pub struct AudioSource {
     thread: Option<JoinHandle<()>>,
     /// Hay un dispositivo abierto y entregando audio.
     pub available: Arc<AtomicBool>,
+    /// El dispositivo elegido no está conectado y se usa el predeterminado.
+    pub fallback: Arc<AtomicBool>,
+    /// Id de WASAPI del dispositivo abierto ahora mismo.
+    pub device: Arc<Mutex<String>>,
 }
 
 impl AudioSource {
-    pub fn spawn(track: usize, loopback: bool, start100: i64, tx: Sender<Chunk>) -> Self {
+    /// `device`: id de WASAPI del dispositivo elegido; vacío = el predeterminado
+    /// de Windows (y se siguen sus cambios).
+    pub fn spawn(track: usize, loopback: bool, device: String, start100: i64, tx: Sender<Chunk>) -> Self {
         let stop = Arc::new(AtomicBool::new(false));
         let available = Arc::new(AtomicBool::new(false));
-        let (s, a) = (stop.clone(), available.clone());
+        let fallback = Arc::new(AtomicBool::new(false));
+        let current = Arc::new(Mutex::new(String::new()));
+        let (s, a, f, c) = (stop.clone(), available.clone(), fallback.clone(), current.clone());
         let thread = std::thread::Builder::new()
             .name(if loopback { "clips-audio-sistema" } else { "clips-audio-micro" }.into())
             .spawn(move || {
                 unsafe {
                     let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
                 }
+                // Prioridad multimedia: con la CPU llena, WASAPI no se queda sin leer.
+                let _boost = super::boost_mmcss("Audio");
                 let mut p = Pump { track, start100, produced: 0, tx };
-                run(loopback, &s, &a, &mut p);
+                run(loopback, &device, &s, &a, &f, &c, &mut p);
                 unsafe { CoUninitialize() };
             })
             .ok();
-        Self { stop, thread, available }
+        Self { stop, thread, available, fallback, device: current }
     }
 
     /// Fuente sintética para las pruebas: un seno continuo de `freq` Hz a media
@@ -66,8 +78,13 @@ impl AudioSource {
         let thread = std::thread::Builder::new()
             .name("clips-audio-seno".into())
             .spawn(move || {
+                let _boost = super::boost_mmcss("Audio");
                 let mut p = Pump { track, start100, produced: 0, tx };
                 while !s.load(Ordering::SeqCst) {
+                    #[cfg(test)]
+                    if let Some(d) = take_stall(track) {
+                        std::thread::sleep(d); // simula un hilo de audio colgado
+                    }
                     let now = p.pos_at(qpc100()).max(0) as u64;
                     if now > p.produced {
                         let data = (p.produced..now)
@@ -82,7 +99,7 @@ impl AudioSource {
                 }
             })
             .ok();
-        Self { stop, thread, available }
+        Self { stop, thread, available, fallback: Arc::new(AtomicBool::new(false)), device: Arc::new(Mutex::new(String::new())) }
     }
 }
 
@@ -90,7 +107,7 @@ impl Drop for AudioSource {
     fn drop(&mut self) {
         self.stop.store(true, Ordering::SeqCst);
         if let Some(t) = self.thread.take() {
-            let _ = t.join();
+            super::join_bounded(t, std::time::Duration::from_secs(2), "un hilo de audio de clips");
         }
     }
 }
@@ -157,24 +174,40 @@ impl Pump {
     }
 }
 
-fn run(loopback: bool, stop: &AtomicBool, available: &AtomicBool, p: &mut Pump) {
+fn run(loopback: bool, wanted: &str, stop: &AtomicBool, available: &AtomicBool, fallback: &AtomicBool, current: &Mutex<String>, p: &mut Pump) {
     let enumerator: Option<IMMDeviceEnumerator> = unsafe { CoCreateInstance(&MMDeviceEnumerator, None, CLSCTX_ALL).ok() };
     let flow = if loopback { eRender } else { eCapture };
+    let kind = if loopback { "salida" } else { "micrófono" };
     let mut dev: Option<Device> = None;
     let mut next_open = Instant::now();
     let mut next_check = Instant::now() + Duration::from_secs(2);
     while !stop.load(Ordering::SeqCst) {
         let now = Instant::now();
         if dev.is_none() && now >= next_open {
-            dev = match enumerator.as_ref().map(|e| Device::open(e, flow, loopback)) {
-                Some(Ok(d)) => {
-                    eprintln!("clips audio {}: abierto ({})", p.track, if d.format.is_none() { "PCM 48 kHz de Windows" } else { "conversión propia" });
-                    Some(d)
-                }
-                Some(Err(e)) => {
-                    eprintln!("clips audio {}: no se puede abrir ({})", p.track, e.message());
+            dev = match enumerator.as_ref().map(|e| (e, resolve(e, flow, wanted))) {
+                Some((_, None)) => {
+                    crate::log_warn!("clips", "audio {}: no hay ningún dispositivo de {kind}", p.track);
                     None
                 }
+                Some((_, Some((device, id, fb)))) => match Device::open(&device, &id, loopback) {
+                    Ok(d) => {
+                        let name = unsafe { friendly_name(&device) }.unwrap_or_default();
+                        crate::log_info!(
+                            "clips",
+                            "audio {}: abierto «{name}»{} ({})",
+                            p.track,
+                            if fb { " (el elegido no está conectado: predeterminado)" } else { "" },
+                            if d.format.is_none() { "PCM 48 kHz de Windows" } else { "conversión propia" }
+                        );
+                        fallback.store(fb, Ordering::SeqCst);
+                        *current.lock().unwrap() = id;
+                        Some(d)
+                    }
+                    Err(e) => {
+                        crate::log_warn!("clips", "audio {}: no se puede abrir ({})", p.track, e.message());
+                        None
+                    }
+                },
                 None => None,
             };
             available.store(dev.is_some(), Ordering::SeqCst);
@@ -182,19 +215,20 @@ fn run(loopback: bool, stop: &AtomicBool, available: &AtomicBool, p: &mut Pump) 
         }
         if let Some(d) = &mut dev {
             if let Err(e) = d.drain(p) {
-                eprintln!("clips audio {}: error al leer ({})", p.track, e.message());
-                // Dispositivo desconectado o invalidado: se reabre el nuevo por defecto.
+                crate::log_warn!("clips", "audio {}: error al leer ({})", p.track, e.message());
+                // Dispositivo desconectado o invalidado: se reabre el que toque.
                 dev = None;
                 available.store(false, Ordering::SeqCst);
                 next_open = Instant::now();
             }
         }
-        // ¿Ha cambiado el dispositivo por defecto (auriculares, HDMI…)?
+        // ¿Ha cambiado lo que toca usar? (Se ha conectado el elegido, se ha
+        // desconectado, o ha cambiado el predeterminado: auriculares, HDMI…)
         if now >= next_check {
             next_check = now + Duration::from_secs(2);
             if let (Some(d), Some(e)) = (&dev, &enumerator) {
-                if default_id(e, flow).is_some_and(|id| id != d.id) {
-                    eprintln!("clips audio {}: cambio de dispositivo por defecto", p.track);
+                if let Some((_, id, _)) = resolve(e, flow, wanted).filter(|(_, id, _)| *id != d.id) {
+                    crate::log_info!("clips", "audio {}: cambio de dispositivo ({})", p.track, if id == wanted { "vuelve el elegido" } else { "otro predeterminado" });
                     dev = None;
                     next_open = Instant::now();
                 }
@@ -207,6 +241,142 @@ fn run(loopback: bool, stop: &AtomicBool, available: &AtomicBool, p: &mut Pump) 
         p.fill_gap();
         std::thread::sleep(Duration::from_millis(10));
     }
+}
+
+/// Qué dispositivo usar: el elegido (`wanted`, id de WASAPI) si está activo;
+/// si no, el predeterminado de Windows. El `bool` dice si se ha caído al
+/// predeterminado porque el elegido no está conectado.
+pub fn choose(wanted: &str, active: &[String], default: Option<&str>) -> Option<(String, bool)> {
+    if !wanted.is_empty() && active.iter().any(|id| id == wanted) {
+        return Some((wanted.to_string(), false));
+    }
+    default.map(|d| (d.to_string(), !wanted.is_empty()))
+}
+
+fn active_ids(e: &IMMDeviceEnumerator, flow: EDataFlow) -> Vec<String> {
+    let mut out = Vec::new();
+    unsafe {
+        if let Ok(list) = e.EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE) {
+            for i in 0..list.GetCount().unwrap_or(0) {
+                if let Some(id) = list.Item(i).ok().and_then(|d| device_id(&d)) {
+                    out.push(id);
+                }
+            }
+        }
+    }
+    out
+}
+
+fn resolve(e: &IMMDeviceEnumerator, flow: EDataFlow, wanted: &str) -> Option<(IMMDevice, String, bool)> {
+    let active = if wanted.is_empty() { Vec::new() } else { active_ids(e, flow) };
+    let (id, fallback) = choose(wanted, &active, default_id(e, flow).as_deref())?;
+    let device = unsafe { e.GetDevice(&windows::core::HSTRING::from(id.as_str())) }.ok()?;
+    Some((device, id, fallback))
+}
+
+/// Un dispositivo de audio activo, para el selector de Ajustes.
+pub struct Endpoint {
+    pub id: String,
+    pub name: String,
+    pub is_default: bool,
+}
+
+/// Dispositivos de captura (`capture`) o de salida activos, con su nombre.
+pub fn endpoints(capture: bool) -> Vec<Endpoint> {
+    let flow = if capture { eCapture } else { eRender };
+    let mut out = Vec::new();
+    unsafe {
+        // Puede llamarse desde cualquier hilo (IPC): COM en modo MTA si no lo está.
+        let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        let Ok(e) = CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL) else { return out };
+        let default = default_id(&e, flow);
+        if let Ok(list) = e.EnumAudioEndpoints(flow, DEVICE_STATE_ACTIVE) {
+            for i in 0..list.GetCount().unwrap_or(0) {
+                let Ok(d) = list.Item(i) else { continue };
+                let Some(id) = device_id(&d) else { continue };
+                let name = friendly_name(&d).unwrap_or_else(|| "Dispositivo de audio".into());
+                out.push(Endpoint { is_default: default.as_deref() == Some(id.as_str()), id, name });
+            }
+        }
+    }
+    out
+}
+
+/// Medidor de nivel para elegir micrófono en Ajustes. Abre el micro pedido solo
+/// mientras la página pregunta: si nadie pregunta en 2 s, se cierra solo (así
+/// nunca sigue abierto con Ajustes cerrado o en otra página).
+struct Meter {
+    device: String,
+    peak: Arc<std::sync::atomic::AtomicU32>,
+    last_poll: Arc<Mutex<Instant>>,
+    done: Arc<AtomicBool>,
+}
+
+static METER: Mutex<Option<Meter>> = Mutex::new(None);
+
+/// Pico (0–1) del micrófono `device` (vacío = el predeterminado) desde la
+/// pregunta anterior.
+pub fn mic_level(device: &str) -> f32 {
+    let mut slot = METER.lock().unwrap();
+    let reuse = slot.as_ref().is_some_and(|m| m.device == device && !m.done.load(Ordering::SeqCst));
+    if !reuse {
+        if let Some(old) = slot.take() {
+            // El hilo anterior ve que ya no le preguntan y se cierra.
+            *old.last_poll.lock().unwrap() = Instant::now() - Duration::from_secs(10);
+        }
+        *slot = Some(start_meter(device.to_string()));
+    }
+    let m = slot.as_ref().unwrap();
+    *m.last_poll.lock().unwrap() = Instant::now();
+    f32::from_bits(m.peak.swap(0, Ordering::SeqCst))
+}
+
+fn start_meter(device: String) -> Meter {
+    let peak = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    let last_poll = Arc::new(Mutex::new(Instant::now()));
+    let done = Arc::new(AtomicBool::new(false));
+    let (p, l, d, id) = (peak.clone(), last_poll.clone(), done.clone(), device.clone());
+    let _ = std::thread::Builder::new().name("clips-medidor".into()).spawn(move || {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
+        }
+        let opened = unsafe { CoCreateInstance::<_, IMMDeviceEnumerator>(&MMDeviceEnumerator, None, CLSCTX_ALL) }
+            .ok()
+            .and_then(|e| resolve(&e, eCapture, &id))
+            .and_then(|(dev, did, _)| Device::open(&dev, &did, false).ok());
+        if let Some(mut dev) = opened {
+            let (tx, rx) = std::sync::mpsc::channel();
+            let mut pump = Pump { track: 0, start100: qpc100(), produced: 0, tx };
+            while l.lock().unwrap().elapsed() < Duration::from_secs(2) {
+                if dev.drain(&mut pump).is_err() {
+                    break;
+                }
+                let mut max = 0f32;
+                for c in rx.try_iter() {
+                    for &s in &c.data {
+                        max = max.max((s as f32 / 32_768.0).abs());
+                    }
+                }
+                // f32 positivos: el orden de sus bits es el de sus valores.
+                p.fetch_max(max.to_bits(), Ordering::SeqCst);
+                std::thread::sleep(Duration::from_millis(20));
+            }
+        }
+        d.store(true, Ordering::SeqCst);
+        unsafe { CoUninitialize() };
+    });
+    Meter { device, peak, last_poll, done }
+}
+
+/// Nombre del dispositivo (PKEY_Device_FriendlyName), p. ej. «Micrófono (USB Audio)».
+unsafe fn friendly_name(d: &IMMDevice) -> Option<String> {
+    let store = d.OpenPropertyStore(STGM_READ).ok()?;
+    let key = PROPERTYKEY { fmtid: windows::core::GUID::from_u128(0xa45c254e_df1c_4efd_8020_67d146a850e0), pid: 14 };
+    let value = store.GetValue(&key).ok()?;
+    let p = PropVariantToStringAlloc(&value).ok()?;
+    let s = p.to_string().ok();
+    CoTaskMemFree(Some(p.0 as *const _));
+    s.filter(|s| !s.is_empty())
 }
 
 fn default_id(e: &IMMDeviceEnumerator, flow: EDataFlow) -> Option<String> {
@@ -237,10 +407,9 @@ struct Device {
 }
 
 impl Device {
-    fn open(e: &IMMDeviceEnumerator, flow: EDataFlow, loopback: bool) -> Result<Self> {
+    fn open(device: &IMMDevice, id: &str, loopback: bool) -> Result<Self> {
         unsafe {
-            let device = e.GetDefaultAudioEndpoint(flow, eConsole)?;
-            let id = device_id(&device).unwrap_or_default();
+            let id = id.to_string();
             let base = if loopback { AUDCLNT_STREAMFLAGS_LOOPBACK } else { 0 };
             let want = WAVEFORMATEX {
                 wFormatTag: WAVE_FORMAT_PCM as u16,
@@ -430,6 +599,23 @@ mod tests {
         // 1920 muestras del tercero, menos las 1440 solapadas → 480.
         assert_eq!(chunks.last().unwrap().data.len(), 480 * 2);
         assert_eq!(p.produced, 4800 + 480 + 480);
+    }
+
+    #[test]
+    fn elige_el_dispositivo_o_cae_en_el_predeterminado() {
+        let active = ["mic-a".to_string(), "mic-b".to_string(), "mic-c".to_string()];
+        // Sin elegir: el predeterminado, sin aviso.
+        assert_eq!(choose("", &active, Some("mic-a")), Some(("mic-a".into(), false)));
+        // Elegido y conectado: ese, aunque no sea el predeterminado.
+        assert_eq!(choose("mic-c", &active, Some("mic-a")), Some(("mic-c".into(), false)));
+        // Elegido pero desconectado: el predeterminado, avisando.
+        assert_eq!(choose("mic-x", &active, Some("mic-a")), Some(("mic-a".into(), true)));
+        // Al volver a conectarlo, se vuelve a él.
+        let back = ["mic-a".to_string(), "mic-x".to_string()];
+        assert_eq!(choose("mic-x", &back, Some("mic-a")), Some(("mic-x".into(), false)));
+        // Sin ningún dispositivo.
+        assert_eq!(choose("mic-x", &[], None), None);
+        assert_eq!(choose("", &[], None), None);
     }
 
     #[test]

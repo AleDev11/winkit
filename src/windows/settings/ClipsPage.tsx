@@ -3,7 +3,7 @@ import { G, Icon } from '../../components/Icon'
 import { ProgressRing } from '../../components/ProgressRing'
 import { clips } from '../../lib/api'
 import { bufferBytes, CLIP_QUALITIES, clipBitrate, formatBytes, formatDuration, formatMbps } from '../../shared/clips'
-import type { ClipMonitor, ClipQuality, Clips, ClipsStatus } from '../../shared/types'
+import type { AudioDevice, AudioDevices, ClipMonitor, ClipQuality, Clips, ClipsStatus } from '../../shared/types'
 import { acceleratorParts } from './accelerator'
 import { Card, Group, Select, ToggleCard } from './controls'
 import type { PageProps } from './SettingsApp'
@@ -34,6 +34,71 @@ function useMonitors(): ClipMonitor[] | null {
   return list
 }
 
+/** Micrófonos y salidas activos; se vuelven a pedir al volver a la ventana. */
+function useAudioDevices(): AudioDevices | null {
+  const [devices, setDevices] = useState<AudioDevices | null>(null)
+  useEffect(() => {
+    let alive = true
+    const load = (): void =>
+      void clips
+        .audioDevices()
+        .then((d) => alive && setDevices(d))
+        .catch(() => {})
+    load()
+    window.addEventListener('focus', load)
+    return () => {
+      alive = false
+      window.removeEventListener('focus', load)
+    }
+  }, [])
+  return devices
+}
+
+/** Opciones de un selector de dispositivo: el predeterminado de Windows (con su
+ *  nombre), cada dispositivo, y el guardado si ya no está conectado. */
+function deviceOptions(list: AudioDevice[] | undefined, saved: string, missing: string): { value: string; label: string }[] {
+  const def = list?.find((d) => d.isDefault)
+  const options = [
+    { value: '', label: def ? `Predeterminado de Windows (${def.name})` : 'Predeterminado de Windows' },
+    ...(list ?? []).map((d) => ({ value: d.id, label: d.name }))
+  ]
+  if (saved && list && !list.some((d) => d.id === saved)) options.push({ value: saved, label: missing })
+  return options
+}
+
+/** Medidor de nivel del micrófono: solo pregunta mientras se ve (el backend
+ *  cierra el micro 2 s después de la última pregunta). */
+function MicMeter({ device }: { device: string }): React.JSX.Element {
+  const [level, setLevel] = useState(0)
+  useEffect(() => {
+    let alive = true
+    let shown = 0
+    const tick = (): void => {
+      if (document.hidden) return
+      void clips
+        .micLevel(device)
+        .then((peak) => {
+          if (!alive) return
+          // Escala en dB: de −60 dB (vacío) a 0 dB (lleno), con caída suave.
+          const db = peak > 0 ? 20 * Math.log10(peak) : -60
+          shown = Math.max(Math.min(Math.max((db + 60) / 60, 0), 1), shown * 0.7)
+          setLevel(shown)
+        })
+        .catch(() => {})
+    }
+    const timer = window.setInterval(tick, 100)
+    return () => {
+      alive = false
+      window.clearInterval(timer)
+    }
+  }, [device])
+  return (
+    <span className="mic-meter" role="meter" aria-label="Nivel del micrófono" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(level * 100)}>
+      <span style={{ width: `${level * 100}%` }} />
+    </span>
+  )
+}
+
 /** Estado del backend más un reloj local para que los segundos del búfer avancen entre avisos. */
 function useClipsStatus(): [ClipsStatus | null, number] {
   const [status, setStatus] = useState<{ s: ClipsStatus; at: number } | null>(null)
@@ -55,6 +120,10 @@ function useClipsStatus(): [ClipsStatus | null, number] {
 
 type SaveResult = { ok: true; path: string } | { ok: false; message: string }
 
+/** Cuánto se queda a la vista el aviso de «Guardar clip ahora». */
+const RESULT_OK_MS = 6_000
+const RESULT_ERROR_MS = 10_000
+
 export function ClipsPage({ s, state, save }: PageProps): React.JSX.Element {
   const c = s.clips
   // Siempre sobre los ajustes más recientes (los minutos se guardan con retraso).
@@ -63,6 +132,7 @@ export function ClipsPage({ s, state, save }: PageProps): React.JSX.Element {
   const set = (patch: Partial<Clips>): void => save({ clips: { ...latest.current, ...patch } })
   const [status, buffered] = useClipsStatus()
   const monitors = useMonitors()
+  const devices = useAudioDevices()
   // Resolución del monitor que se graba (para estimar la tasa de bits y el disco).
   const recorded = monitors?.find((m) => m.id === c.monitor) ?? monitors?.find((m) => m.primary)
   const [width, height] = recorded ? [recorded.width, recorded.height] : screenPixels()
@@ -92,6 +162,12 @@ export function ClipsPage({ s, state, save }: PageProps): React.JSX.Element {
 
   const [saving, setSaving] = useState(false)
   const [result, setResult] = useState<SaveResult | null>(null)
+  // El aviso del guardado se va solo: el de éxito a los 6 s, el de error a los 10 s.
+  useEffect(() => {
+    if (!result) return
+    const timer = window.setTimeout(() => setResult(null), result.ok ? RESULT_OK_MS : RESULT_ERROR_MS)
+    return () => window.clearTimeout(timer)
+  }, [result])
   const saveNow = async (): Promise<void> => {
     setSaving(true)
     setResult(null)
@@ -277,6 +353,15 @@ export function ClipsPage({ s, state, save }: PageProps): React.JSX.Element {
           checked={c.systemAudio}
           onChange={(systemAudio) => set({ systemAudio })}
         />
+        <Card title="Salida que se graba" description="Lo que suena por ese dispositivo. Si no está conectado, se usa el predeterminado." className="sub-card">
+          <Select<string>
+            label="Salida que se graba"
+            value={c.systemAudioDevice}
+            disabled={!c.systemAudio}
+            options={deviceOptions(devices?.outputs, c.systemAudioDevice, 'Salida no conectada (se usa la predeterminada)')}
+            onChange={(systemAudioDevice) => set({ systemAudioDevice })}
+          />
+        </Card>
         <ToggleCard
           glyph={G.microphone}
           title="Micrófono"
@@ -284,6 +369,20 @@ export function ClipsPage({ s, state, save }: PageProps): React.JSX.Element {
           checked={c.microphone}
           onChange={(microphone) => set({ microphone })}
         />
+        <Card
+          title="Micrófono que se graba"
+          description="Habla y mira la barra para saber cuál es. Si no está conectado, se usa el predeterminado."
+          className="sub-card"
+        >
+          {c.microphone && <MicMeter device={c.microphoneDevice} />}
+          <Select<string>
+            label="Micrófono que se graba"
+            value={c.microphoneDevice}
+            disabled={!c.microphone}
+            options={deviceOptions(devices?.inputs, c.microphoneDevice, 'Micrófono no conectado (se usa el predeterminado)')}
+            onChange={(microphoneDevice) => set({ microphoneDevice })}
+          />
+        </Card>
       </Group>
 
       <Group title="Destino">

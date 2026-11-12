@@ -1,6 +1,7 @@
 import { Channel, invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
+  AudioDevices,
   ClipMonitor,
   ClipsStatus,
   UpdateStatus,
@@ -145,6 +146,10 @@ export const clips = {
   status: (): Promise<ClipsStatus> => invoke('clips_status'),
   /** Monitores conectados, el principal primero. */
   monitors: (): Promise<ClipMonitor[]> => invoke('clips_monitors'),
+  /** Micrófonos y salidas de audio activos. */
+  audioDevices: (): Promise<AudioDevices> => invoke('clips_audio_devices'),
+  /** Pico (0–1) del micrófono desde la consulta anterior, para un medidor. Se cierra solo si se deja de preguntar. */
+  micLevel: (device: string): Promise<number> => invoke('clips_mic_level', { device }),
   /** Cambios de estado (arranque, error, segundos en el búfer cada pocos segundos). */
   onStatus: (cb: (status: ClipsStatus) => void) => subscribe<ClipsStatus>('clips:status', cb),
   /** Selector de carpeta nativo. Devuelve la ruta elegida (ya guardada en ajustes) o null si se cancela. */

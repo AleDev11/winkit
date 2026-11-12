@@ -53,6 +53,10 @@ pub struct Clips {
     pub microphone: bool,
     /// Monitor que se graba (id estable de `replay::monitors`). Vacío = el principal.
     pub monitor: String,
+    /// Salida de la que se graba el audio del sistema (id de WASAPI). Vacío = la predeterminada.
+    pub system_audio_device: String,
+    /// Micrófono que se graba (id de WASAPI). Vacío = el predeterminado.
+    pub microphone_device: String,
 }
 
 impl Default for Clips {
@@ -66,6 +70,8 @@ impl Default for Clips {
             system_audio: true,
             microphone: false,
             monitor: String::new(),
+            system_audio_device: String::new(),
+            microphone_device: String::new(),
         }
     }
 }
