@@ -30,6 +30,8 @@ export const G = {
   language: '',
   lightning: '',
   message: '',
+  /** Centro de notificaciones (avisos). */
+  notification: '',
   openExternal: '',
   power: '',
   record: '',

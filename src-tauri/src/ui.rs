@@ -145,3 +145,45 @@ pub fn place_top_center(win: &WebviewWindow, monitor_point: (i32, i32), w: f64, 
     }
     set_bounds(win, x, y, pw, ph);
 }
+
+/// En una esquina del área de trabajo del monitor de `monitor_point`, con un
+/// margen como el de las notificaciones de Windows. `corner`: "bottomRight",
+/// "bottomLeft", "topRight" o "topLeft".
+pub fn place_corner(win: &WebviewWindow, monitor_point: (i32, i32), corner: &str, w: f64, h: f64) {
+    let mon = screen::monitor_at(monitor_point.0, monitor_point.1);
+    let (x, y, pw, ph) = corner_rect(mon.work, mon.scale, corner, w, h);
+    set_bounds(win, x, y, pw, ph);
+}
+
+/// Rectángulo físico (x, y, ancho, alto) para `place_corner`.
+fn corner_rect(wa: screen::Rect, scale: f64, corner: &str, w: f64, h: f64) -> (i32, i32, i32, i32) {
+    let (pw, ph) = ((w * scale).ceil() as i32, (h * scale).ceil() as i32);
+    let margin = (12.0 * scale).round() as i32;
+    let x = if corner.ends_with("Left") { wa.x + margin } else { wa.x + wa.width - pw - margin };
+    let y = if corner.starts_with("top") { wa.y + margin } else { wa.y + wa.height - ph - margin };
+    (x.max(wa.x), y.max(wa.y), pw, ph)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn esquinas() {
+        // 1920×1080 con la barra de tareas abajo (48 px): área de trabajo 1920×1032.
+        let wa = screen::Rect { x: 0, y: 0, width: 1920, height: 1032 };
+        assert_eq!(corner_rect(wa, 1.0, "bottomRight", 320.0, 56.0), (1920 - 320 - 12, 1032 - 56 - 12, 320, 56));
+        assert_eq!(corner_rect(wa, 1.0, "bottomLeft", 320.0, 56.0), (12, 1032 - 56 - 12, 320, 56));
+        assert_eq!(corner_rect(wa, 1.0, "topRight", 320.0, 56.0), (1920 - 320 - 12, 12, 320, 56));
+        assert_eq!(corner_rect(wa, 1.0, "topLeft", 320.0, 56.0), (12, 12, 320, 56));
+    }
+
+    #[test]
+    fn monitor_secundario_al_150() {
+        // Monitor a la izquierda del principal (x negativa), escala 150 %.
+        let wa = screen::Rect { x: -2560, y: 0, width: 2560, height: 1392 };
+        let (x, y, w, h) = corner_rect(wa, 1.5, "bottomRight", 320.0, 56.0);
+        assert_eq!((w, h), (480, 84));
+        assert_eq!((x, y), (-2560 + 2560 - 480 - 18, 1392 - 84 - 18));
+    }
+}

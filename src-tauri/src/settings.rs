@@ -97,6 +97,9 @@ pub struct Settings {
     pub launch_at_login: bool,
     pub search_engine: String,
     pub color_format: String,
+    /// Dónde salen los avisos: "bottomRight" (por defecto), "bottomLeft", "topRight",
+    /// "topLeft" o "cursor" (junto al ratón).
+    pub notice_position: String,
     pub clips: Clips,
 }
 
@@ -116,6 +119,7 @@ impl Default for Settings {
             launch_at_login: true,
             search_engine: "google".into(),
             color_format: "hex".into(),
+            notice_position: "bottomRight".into(),
             clips: Clips::default(),
         }
     }

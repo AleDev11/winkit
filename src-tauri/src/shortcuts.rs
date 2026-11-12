@@ -126,6 +126,8 @@ pub async fn save_clip() {
     if !c.enabled {
         return palette::notice("Activa los clips en Ajustes para poder guardarlos.", true, None);
     }
+    // Al momento, para que se vea que el atajo ha llegado; guardar tarda hasta ~1 s.
+    palette::notice("Guardando clip…", false, None);
     let started = std::time::Instant::now();
     match crate::replay::save().await {
         Ok(path) => {
