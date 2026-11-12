@@ -56,6 +56,9 @@ struct State {
     hwnd: isize,
     /// Cursor al abrir; None = centrada (lector abierto sin selección).
     anchor: Option<(i32, i32)>,
+    /// Los avisos van a una esquina del monitor del cursor ("bottomRight"…);
+    /// None = se colocan por `anchor`.
+    corner: Option<String>,
     focused: bool,
     busy: bool,
     /// Atajo directo con reemplazo automático: se consume con el primer resultado.
@@ -68,6 +71,7 @@ static STATE: Mutex<State> = Mutex::new(State {
     session: 0,
     hwnd: 0,
     anchor: None,
+    corner: None,
     focused: false,
     busy: false,
     auto_pending: false,
@@ -210,7 +214,10 @@ fn show(init: PaletteInit, focus: bool) {
 /// Coloca la paleta para un contenido de `w`×`h` px CSS.
 pub fn place(w: f64, h: f64) {
     let Some(win) = ui::get(PALETTE) else { return };
-    let anchor = state().anchor;
+    let (anchor, corner) = { let st = state(); (st.anchor, st.corner.clone()) };
+    if let Some(c) = corner {
+        return ui::place_corner(&win, screen::cursor(), &c, w, h);
+    }
     match anchor {
         Some(a) => ui::place_near(&win, a, w, h),
         None => ui::place_top_center(&win, screen::cursor(), w, h),
@@ -220,7 +227,10 @@ pub fn place(w: f64, h: f64) {
 pub fn notice(message: impl Into<String>, open_settings: bool, color: Option<String>) {
     {
         let mut st = state();
+        // Por defecto, abajo a la derecha; «cursor» los deja junto al ratón como antes.
+        let pos = settings::get().notice_position;
         st.anchor = Some(screen::cursor());
+        st.corner = (pos != "cursor").then_some(pos);
         st.hwnd = 0;
     }
     let init = build_init("notice", String::new(), None, false, false, Some(Notice { message: message.into(), open_settings, color }));
@@ -248,6 +258,7 @@ pub fn close(restore_focus: bool) {
         st.focused = false;
         st.auto_pending = false;
         st.session += 1; // invalida temporizadores y respuestas en vuelo
+        st.corner = None;
         std::mem::take(&mut st.hwnd)
     };
     let Some(w) = ui::get(PALETTE) else { return };

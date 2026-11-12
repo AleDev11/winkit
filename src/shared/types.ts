@@ -22,6 +22,8 @@ export type SearchEngine = keyof typeof SEARCH_ENGINES
 
 export type ColorFormat = 'hex' | 'rgb' | 'hsl'
 
+export type NoticePosition = 'bottomRight' | 'bottomLeft' | 'topRight' | 'topLeft' | 'cursor'
+
 export interface CustomAction {
   id: string
   name: string
@@ -120,6 +122,8 @@ export interface Settings {
   launchAtLogin: boolean
   searchEngine: SearchEngine
   colorFormat: ColorFormat
+  /** Dónde salen los avisos (clip guardado, color copiado…). "cursor" = junto al ratón. */
+  noticePosition: NoticePosition
   clips: Clips
 }
 

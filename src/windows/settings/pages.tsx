@@ -10,6 +10,7 @@ import {
   type CustomAction,
   type KeyTestResult,
   type ModelId,
+  type NoticePosition,
   type SearchEngine,
   type Shortcuts,
   type UpdateStatus
@@ -66,6 +67,14 @@ function useDraft<T>(value: T, commit: (v: T) => void, delay = 600) {
 
 // ── General ─────────────────────────────────────────────────────────────
 
+const NOTICE_POSITIONS: { value: NoticePosition; label: string }[] = [
+  { value: 'bottomRight', label: 'Abajo a la derecha' },
+  { value: 'bottomLeft', label: 'Abajo a la izquierda' },
+  { value: 'topRight', label: 'Arriba a la derecha' },
+  { value: 'topLeft', label: 'Arriba a la izquierda' },
+  { value: 'cursor', label: 'Junto al ratón' }
+]
+
 export function GeneralPage({ s, state, save, setState }: PageProps): React.JSX.Element {
   return (
     <>
@@ -115,6 +124,18 @@ export function GeneralPage({ s, state, save, setState }: PageProps): React.JSX.
           checked={s.launchAtLogin}
           onChange={(launchAtLogin) => save({ launchAtLogin })}
         />
+        <Card
+          glyph={G.notification}
+          title="Dónde salen los avisos"
+          description="Clip guardado, color copiado, «No hay texto seleccionado»… La paleta y el buscador no cambian."
+        >
+          <Select<NoticePosition>
+            label="Dónde salen los avisos"
+            value={s.noticePosition}
+            options={NOTICE_POSITIONS}
+            onChange={(noticePosition) => save({ noticePosition })}
+          />
+        </Card>
       </Group>
     </>
   )
