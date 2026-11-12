@@ -94,6 +94,14 @@ fn palette_hwnd() -> isize {
     ui::get(PALETTE).map(|w| winx::hwnd_of(&w)).unwrap_or(0)
 }
 
+/// Oculta la paleta de verdad. `hide()` de Tauri no basta cuando se mostró con
+/// `show_inactive` (sin foco): tao solo oculta si cree que estaba visible, y en
+/// ese caso no se enteró de que se mostró. Por eso los avisos no se iban.
+fn hide_window(w: &tauri::WebviewWindow) {
+    let _ = w.hide();
+    winx::hide(w);
+}
+
 fn is_visible() -> bool {
     ui::get(PALETTE).and_then(|w| w.is_visible().ok()).unwrap_or(false)
 }
@@ -217,10 +225,13 @@ pub fn notice(message: impl Into<String>, open_settings: bool, color: Option<Str
     }
     let init = build_init("notice", String::new(), None, false, false, Some(Notice { message: message.into(), open_settings, color }));
     let session = init.session;
+    // Que dé tiempo a leerlo: 2 s más ~50 ms por carácter, hasta 7 s.
+    let chars = init.notice.as_ref().map_or(0, |n| n.message.chars().count()) as u64;
+    let visible = Duration::from_millis((2000 + chars * 50).min(7000));
     show(init, open_settings);
     if !open_settings {
         tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(Duration::from_millis(2200)).await;
+            tokio::time::sleep(visible).await;
             if state().session == session {
                 close(false);
             }
@@ -246,7 +257,7 @@ pub fn close(restore_focus: bool) {
     if restore_focus && hwnd != 0 {
         input::set_foreground_window(hwnd);
     }
-    let _ = w.hide();
+    hide_window(&w);
 }
 
 pub fn on_focus_change(focused: bool) {
@@ -438,7 +449,7 @@ pub async fn replace(text: String) {
     // Primero el foco a la app original y luego ocultar: así Windows no lo da a otra ventana.
     input::set_foreground_window(hwnd);
     if let Some(w) = ui::get(PALETTE) {
-        let _ = w.hide();
+        hide_window(&w);
     }
     paste_into(hwnd, &text).await;
 }

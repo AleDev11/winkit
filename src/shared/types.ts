@@ -62,9 +62,27 @@ export interface Clips {
   microphone: boolean
   /** Monitor que se graba (id de `clips.monitors()`). Vacío = el principal. */
   monitor: string
+  /** Salida cuyo sonido se graba (id de `clips.audioDevices()`). Vacío = la predeterminada de Windows. */
+  systemAudioDevice: string
+  /** Micrófono que se graba (id de `clips.audioDevices()`). Vacío = el predeterminado de Windows. */
+  microphoneDevice: string
 }
 
 /** Un monitor conectado (para elegir cuál graban los clips). */
+/** Un micrófono o una salida de audio activos. */
+export interface AudioDevice {
+  /** Id de WASAPI (estable). */
+  id: string
+  /** Nombre de Windows, p. ej. «Micrófono (Yeti Stereo Microphone)». */
+  name: string
+  isDefault: boolean
+}
+
+export interface AudioDevices {
+  inputs: AudioDevice[]
+  outputs: AudioDevice[]
+}
+
 export interface ClipMonitor {
   /** Id estable: la ruta de dispositivo del monitor. */
   id: string

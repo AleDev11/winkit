@@ -5,7 +5,7 @@ use raw_window_handle::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::HWND;
 use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_ROUND};
 use windows::Win32::UI::WindowsAndMessaging::{
-    SetWindowPos, ShowWindow, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_SHOWNOACTIVATE,
+    SetWindowPos, ShowWindow, HWND_TOPMOST, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOSIZE, SW_HIDE, SW_SHOWNOACTIVATE,
 };
 
 pub fn hwnd_of(w: &impl HasWindowHandle) -> isize {
@@ -28,6 +28,14 @@ pub fn show_inactive(w: &impl HasWindowHandle) {
     unsafe {
         let _ = ShowWindow(h, SW_SHOWNOACTIVATE);
         let _ = SetWindowPos(h, Some(HWND_TOPMOST), 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+    }
+}
+
+/// Oculta la ventana con la API de Windows (ver `palette::hide_window`).
+pub fn hide(w: &impl HasWindowHandle) {
+    let Some(h) = hwnd(w) else { return };
+    unsafe {
+        let _ = ShowWindow(h, SW_HIDE);
     }
 }
 

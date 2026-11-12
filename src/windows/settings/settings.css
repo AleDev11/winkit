@@ -540,6 +540,54 @@ a.btn {
   user-select: text;
 }
 
+/* Fila hija de la de encima (p. ej. el dispositivo bajo «Micrófono»): sin
+   icono, con el texto alineado con el de la tarjeta madre. */
+.sub-card .card-head {
+  min-height: 56px;
+  padding-left: 52px;
+}
+/* Los nombres de los dispositivos son largos: el selector no pasa de 300 px. */
+.sub-card .card-text {
+  flex: 1 1 200px;
+}
+.sub-card .card-control {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.sub-card .select-wrap {
+  min-width: 0;
+  width: 300px;
+  max-width: 100%;
+}
+.sub-card .select {
+  width: 100%;
+  text-overflow: ellipsis;
+}
+.select:disabled {
+  background: var(--control-disabled);
+  color: var(--text-disabled);
+}
+.select-wrap:has(.select:disabled)::after {
+  color: var(--text-disabled);
+}
+
+/* Medidor de nivel del micrófono, como el de Configuración de Windows. */
+.mic-meter {
+  display: inline-block;
+  width: 72px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--control-strong);
+  overflow: hidden;
+}
+.mic-meter > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent-fill);
+  transition: width 90ms linear;
+}
+
 /* Slider de Fluent: pista fina rellena con el acento y tirador con anillo. */
 .slider {
   appearance: none;

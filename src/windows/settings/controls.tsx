@@ -57,10 +57,17 @@ export function Select<T extends string>(props: {
   options: { value: T; label: string }[]
   onChange: (v: T) => void
   label: string
+  disabled?: boolean
 }): React.JSX.Element {
   return (
     <span className="select-wrap">
-      <select className="select" value={props.value} aria-label={props.label} onChange={(e) => props.onChange(e.target.value as T)}>
+      <select
+        className="select"
+        value={props.value}
+        aria-label={props.label}
+        disabled={props.disabled}
+        onChange={(e) => props.onChange(e.target.value as T)}
+      >
         {props.options.map((o) => (
           <option key={o.value} value={o.value}>
             {o.label}

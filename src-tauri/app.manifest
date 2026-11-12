@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<!--
+  Manifiesto de Windows para la app y para los tests (cargo test). Es el mismo
+  que pondría tauri-build (controles comunes v6), pero lo enlazamos nosotros a
+  todos los ejecutables: sin él, los tests no encuentran
+  comctl32!TaskDialogIndirect y ni arrancan (STATUS_ENTRYPOINT_NOT_FOUND).
+-->
+<assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
+  <dependency>
+    <dependentAssembly>
+      <assemblyIdentity type="win32" name="Microsoft.Windows.Common-Controls" version="6.0.0.0" processorArchitecture="*" publicKeyToken="6595b64144ccf1df" language="*" />
+    </dependentAssembly>
+  </dependency>
+</assembly>

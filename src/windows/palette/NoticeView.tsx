@@ -16,8 +16,15 @@ export function NoticeView({ init }: { init: PaletteInit }): React.JSX.Element {
     return () => window.removeEventListener('keydown', on)
   }, [notice.openSettings])
 
+  // Un clic en cualquier parte lo cierra: los avisos salen sin foco, así que
+  // Esc solo funciona si antes se ha hecho clic en ellos.
   return (
-    <div className={notice.openSettings ? 'notice-view attention' : 'notice-view'} role="status">
+    <div
+      className={notice.openSettings ? 'notice-view attention' : 'notice-view'}
+      role="status"
+      title="Clic para cerrar"
+      onClick={() => void palette.close()}
+    >
       {notice.color ? (
         <span className="notice-swatch" style={{ background: notice.color }} aria-hidden="true" />
       ) : (
@@ -27,10 +34,19 @@ export function NoticeView({ init }: { init: PaletteInit }): React.JSX.Element {
       )}
       <span className="notice-message">{notice.message}</span>
       {notice.openSettings && (
-        <button className="btn accent sm" onClick={() => void ui.openSettings()}>
+        <button
+          className="btn accent sm"
+          onClick={(e) => {
+            e.stopPropagation()
+            void ui.openSettings()
+          }}
+        >
           Abrir ajustes
         </button>
       )}
+      <button className="btn subtle sm icon-only notice-close" aria-label="Cerrar" onClick={() => void palette.close()}>
+        <Icon glyph={G.close} />
+      </button>
     </div>
   )
 }

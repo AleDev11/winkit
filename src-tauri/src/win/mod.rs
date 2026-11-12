@@ -7,4 +7,5 @@ pub mod dpapi;
 pub mod input;
 pub mod screen;
 pub mod system;
+pub mod toast;
 pub mod window;

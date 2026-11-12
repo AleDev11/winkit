@@ -85,7 +85,7 @@ fn compile(src: &str, entry: &str, target: &str) -> Result<ID3DBlob> {
     if let Err(e) = r {
         if let Some(err) = errors {
             let msg = unsafe { std::slice::from_raw_parts(err.GetBufferPointer() as *const u8, err.GetBufferSize()) };
-            eprintln!("clips: error del shader: {}", String::from_utf8_lossy(msg));
+            crate::log_error!("clips", "error del shader: {}", String::from_utf8_lossy(msg));
         }
         return Err(e);
     }
