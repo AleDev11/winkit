@@ -3,6 +3,7 @@ import Markdown, { type Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { G, Icon } from '../../components/Icon'
 import { ProgressRing } from '../../components/ProgressRing'
+import { SpeakButton } from '../../components/SpeakButton'
 import { useAutoResize } from '../../components/useAutoResize'
 import { launcher, ui } from '../../lib/api'
 import { MODELS, type AppEntry, type LauncherInit } from '../../shared/types'
@@ -23,7 +24,7 @@ const HINTS: { glyph: string; title: string; example: string; query: string }[] 
   { glyph: G.ruler, title: 'Convertir unidades', example: '10 km a mi', query: '10 km a mi' },
   { glyph: G.power, title: 'Comandos del sistema', example: 'bloquear, papelera, apagar', query: 'bloquear' },
   { glyph: G.globe, title: 'Buscar en la web', example: 'o abrir una dirección', query: '' },
-  { glyph: G.sparkle, title: 'Preguntar a Claude', example: 'Ctrl+Enter con lo que escribas', query: '' }
+  { glyph: G.sparkle, title: 'Preguntar a la IA', example: 'Ctrl+Enter con lo que escribas', query: '' }
 ]
 
 const GROUP_LABELS: Record<Group, string> = {
@@ -33,7 +34,7 @@ const GROUP_LABELS: Record<Group, string> = {
   system: 'Sistema',
   apps: 'Aplicaciones',
   web: 'Web',
-  claude: 'Claude'
+  claude: 'IA'
 }
 
 // Los enlaces de las respuestas se abren en el navegador, no dentro de la ventana.
@@ -243,7 +244,7 @@ export function Launcher(): React.JSX.Element {
           ref={inputRef}
           className="search-input"
           value={query}
-          placeholder="Busca apps, calcula, convierte o pregunta a Claude"
+          placeholder="Busca apps, calcula, convierte o pregunta a la IA"
           spellCheck={false}
           autoFocus
           onChange={(e) => setQuery(e.target.value)}
@@ -271,10 +272,11 @@ export function Launcher(): React.JSX.Element {
         <section className="answer fade-in" aria-live="polite">
           <header className="answer-head">
             <Icon glyph={G.sparkle} className="answer-icon" />
-            <span className="body-strong">Claude</span>
+            <span className="body-strong">IA</span>
             <span className="caption faint">{MODELS.find((m) => m.id === answer.model)?.label ?? answer.model ?? init?.modelLabel}</span>
             {answer.status === 'streaming' && <ProgressRing size={14} />}
             <span className="spacer" />
+            <SpeakButton text={answer.text} disabled={answer.status !== 'done'} />
             <button className="btn sm" disabled={answer.status !== 'done'} onClick={copyAnswer}>
               <Icon glyph={copied ? G.check : G.copy} /> Copiar
             </button>
@@ -399,7 +401,7 @@ export function Launcher(): React.JSX.Element {
             </span>
             <span>
               <kbd>Ctrl</kbd>
-              <kbd>Enter</kbd> preguntar a Claude
+              <kbd>Enter</kbd> preguntar a la IA
             </span>
           </>
         )}

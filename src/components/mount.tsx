@@ -1,5 +1,9 @@
 import { createRoot } from 'react-dom/client'
 import { ui } from '../lib/api'
+import { installMock } from '../dev/mock'
+
+// En un navegador normal (npm run vite), datos de ejemplo en vez de Tauri. Ver dev/mock.ts.
+if (import.meta.env.DEV && !('__TAURI_INTERNALS__' in window)) installMock()
 
 /**
  * Aplica el entorno de Windows (material de fondo y color de acento) a la

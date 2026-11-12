@@ -10,12 +10,13 @@
 .palette-run {
   width: 520px;
 }
+/* «Entender» llena la ventana: es el usuario quien la mueve y le da tamaño. */
 .palette-understand {
-  width: 880px;
-  height: 540px;
+  width: 100vw;
+  height: 100vh;
 }
 .palette-notice {
-  width: 320px;
+  width: 360px;
 }
 
 .palette-foot {
@@ -281,9 +282,8 @@
 .u-unknown {
   color: var(--text-3);
 }
-.select-wrap.sm .select {
+.dropdown.sm {
   height: 28px;
-  min-width: 120px;
   font-size: 13px;
 }
 
@@ -360,56 +360,253 @@
   margin-top: 8px;
 }
 
-/* ── Aviso ──────────────────────────────────────────────────────────── */
+/* ── Aviso (la esquina) ─────────────────────────────────────────────── */
 
-.notice-view {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-height: 52px;
-  padding: 10px 8px 10px 16px;
+.notice {
+  position: relative;
+  overflow: hidden;
   cursor: default;
 }
-.notice-message {
-  flex: 1;
+.notice-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 8px 12px 14px;
 }
-.notice-close {
-  flex: none;
-  opacity: 0.6;
-  transition: opacity 120ms ease;
-}
-.notice-view:hover .notice-close,
-.notice-close:focus-visible {
-  opacity: 1;
-}
-.notice-icon {
+.notice-badge {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 16px;
   color: var(--accent-text);
+  background: var(--accent-subtle);
 }
-.notice-view.attention .notice-icon {
+.notice-success .notice-badge {
+  color: var(--success);
+  background: var(--success-bg);
+}
+.notice-warning .notice-badge {
   color: var(--caution);
+  background: var(--caution-bg);
+}
+.notice-error .notice-badge {
+  color: var(--critical);
+  background: var(--critical-bg);
 }
 .notice-swatch {
-  width: 24px;
-  height: 24px;
   flex: none;
-  border-radius: var(--radius-control);
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-surface);
   box-shadow:
-    inset 0 0 0 1px rgba(0, 0, 0, 0.12),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.14),
     0 0 0 1px var(--stroke-control);
 }
-.notice-message {
+.notice-text {
+  display: flex;
   flex: 1;
+  flex-direction: column;
   min-width: 0;
+  padding-top: 1px;
+}
+.notice-title {
+  font-weight: 600;
+  line-height: 20px;
   overflow-wrap: anywhere;
+}
+.notice-detail {
+  margin-top: 1px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 16px;
+  overflow-wrap: anywhere;
+}
+.notice-close {
+  flex: none;
+  margin-top: 2px;
+  opacity: 0.6;
+  transition: opacity var(--fast) var(--ease);
+}
+.notice:hover .notice-close,
+.notice-close:focus-visible {
+  opacity: 1;
+}
+.notice-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 14px 14px 58px;
+}
+
+/* Lo que le queda: se vacía de izquierda a derecha y se pausa al pasar el ratón. */
+.notice-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--accent-fill);
+  opacity: 0.8;
+  transform-origin: left;
+  animation: notice-countdown linear forwards;
+}
+.notice-success .notice-bar {
+  background: var(--success);
+}
+.notice-error .notice-bar {
+  background: var(--critical);
+}
+.notice-warning .notice-bar {
+  background: var(--caution);
+}
+.notice-color .notice-bar {
+  background: var(--text-3);
+}
+@keyframes notice-countdown {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+/* «En curso»: una franja que va y viene. */
+.notice-bar.indeterminate {
+  animation: notice-indeterminate 1.2s var(--ease) infinite;
+  transform-origin: center;
+  width: 40%;
+  right: auto;
+}
+@keyframes notice-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+
+/* Entrada desde su esquina, salida con un fundido; si es del mismo grupo
+   que el anterior, solo cambia el contenido. */
+.notice-enter-bottom {
+  animation: notice-in-bottom var(--normal) var(--ease-out);
+}
+.notice-enter-top {
+  animation: notice-in-top var(--normal) var(--ease-out);
+}
+.notice-enter-cursor {
+  animation: notice-in-fade var(--normal) var(--ease-out);
+}
+.notice-morph .notice-row,
+.notice-morph .notice-actions {
+  animation: notice-in-fade var(--normal) var(--ease-out);
+}
+.notice-leaving {
+  opacity: 0;
+  transition: opacity 140ms var(--ease);
+}
+@keyframes notice-in-bottom {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+}
+@keyframes notice-in-top {
+  from {
+    opacity: 0;
+    transform: translateY(-16px);
+  }
+}
+@keyframes notice-in-fade {
+  from {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .notice,
+  .notice *,
+  .notice-bar {
+    animation: none !important;
+  }
 }
 
 /* El panel entero marca el foco; el campo no necesita su propio anillo. */
 .u-source:focus-visible {
   outline: none;
   box-shadow: none;
+}
+
+/* ── Entender a cualquier tamaño ─────────────────────────────────────
+   La ventana se puede estrechar hasta 440×320. Según se estrecha, se va
+   quitando lo menos importante; la X no encoge nunca. «Entender» llena la
+   ventana, así que las media queries miden la ventana. */
+
+.u-head > * {
+  flex: none;
+}
+.u-head .u-lang {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.u-head .spacer {
+  flex: 1 1 0;
+  min-width: 8px;
+}
+.u-model {
+  flex: 0 1 auto !important;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.u-close {
+  flex: none !important;
+}
+
+@media (max-width: 760px) {
+  .u-model {
+    display: none;
+  }
+}
+/* Solo el icono (el texto queda en la ayuda al pasar el ratón). */
+@media (max-width: 640px) {
+  .u-head .btn-label {
+    display: none;
+  }
+  .u-head .btn.sm:not(.icon-only) {
+    width: 28px;
+    padding: 0;
+    justify-content: center;
+  }
+}
+/* Original y traducción, uno encima del otro. */
+@media (max-width: 600px) {
+  .u-panes {
+    grid-template-columns: 1fr;
+    grid-template-rows: 1fr 1fr;
+  }
+  .u-hint {
+    display: none;
+  }
+}
+@media (max-width: 520px) {
+  .u-title {
+    display: none;
+  }
+  .u-note {
+    display: none;
+  }
+}
+/* Con poca altura, el pie sobra: los atajos siguen funcionando. */
+@media (max-height: 400px) {
+  .understand-view .palette-foot {
+    display: none;
+  }
+  .u-pane-head {
+    height: 32px;
+  }
 }

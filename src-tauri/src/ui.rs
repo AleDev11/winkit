@@ -23,6 +23,11 @@ pub fn app() -> &'static AppHandle {
     APP.get().expect("la app aún no está lista")
 }
 
+/// La app si ya arrancó (en los tests no la hay).
+pub fn try_app() -> Option<&'static AppHandle> {
+    APP.get()
+}
+
 pub fn get(label: &str) -> Option<WebviewWindow> {
     app().get_webview_window(label)
 }
@@ -186,4 +191,24 @@ mod tests {
         assert_eq!((w, h), (480, 84));
         assert_eq!((x, y), (-2560 + 2560 - 480 - 18, 1392 - 84 - 18));
     }
+}
+
+/// Centrada en el área de trabajo del monitor de `monitor_point`, sin salirse.
+pub fn place_center(win: &WebviewWindow, monitor_point: (i32, i32), w: f64, h: f64) {
+    let mon = screen::monitor_at(monitor_point.0, monitor_point.1);
+    let wa = mon.work;
+    let pw = ((w * mon.scale).ceil() as i32).min(wa.width);
+    let ph = ((h * mon.scale).ceil() as i32).min(wa.height);
+    set_bounds(win, wa.x + (wa.width - pw) / 2, wa.y + (wa.height - ph) / 2, pw, ph);
+}
+
+/// Cambia el tamaño sin moverla (la ha colocado el usuario), sin salirse del monitor.
+pub fn resize_in_place(win: &WebviewWindow, w: f64, h: f64) {
+    let Ok(pos) = win.outer_position() else { return };
+    let mon = screen::monitor_at(pos.x, pos.y);
+    let (pw, ph) = ((w * mon.scale).ceil() as i32, (h * mon.scale).ceil() as i32);
+    let wa = mon.work;
+    let x = pos.x.min(wa.x + wa.width - pw).max(wa.x);
+    let y = pos.y.min(wa.y + wa.height - ph).max(wa.y);
+    set_bounds(win, x, y, pw, ph);
 }

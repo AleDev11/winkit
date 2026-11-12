@@ -106,7 +106,6 @@ export interface ClipsStatus {
 }
 
 export interface Settings {
-  model: ModelId
   shortcuts: Shortcuts
   /** Con los atajos directos, reemplaza el texto en cuanto Claude termina, sin vista previa. */
   directAutoReplace: boolean
@@ -124,7 +123,11 @@ export interface Settings {
   colorFormat: ColorFormat
   /** Dónde salen los avisos (clip guardado, color copiado…). "cursor" = junto al ratón. */
   noticePosition: NoticePosition
+  /** Tamaño de «Entender» (px lógicos), recordado al cerrarlo. */
+  understandSize: { width: number; height: number }
   clips: Clips
+  ai: Ai
+  voice: Voice
 }
 
 /** Acciones integradas de la paleta. Las personalizadas usan su id (`custom:...`). */
@@ -181,7 +184,7 @@ export interface PaletteInit {
   autoReplace: boolean
   /** Hay una ventana de origen donde pegar. False si se abrió sin selección. */
   canReplace: boolean
-  notice: { message: string; openSettings: boolean; color: string | null } | null
+  notice: Notice | null
   languages: string[]
   myLanguage: string
   translateTarget: string
@@ -216,6 +219,8 @@ export interface SettingsState {
   hasKey: boolean
   /** La key viene de la variable de entorno ANTHROPIC_API_KEY: no se puede cambiar desde Ajustes. */
   keyFromEnv: boolean
+  /** El proveedor que usa «Escribir» está listo (key, servidor propio o IA local instalada). */
+  aiReady: boolean
   shortcuts: ShortcutStatus[]
   version: string
 }
@@ -240,4 +245,179 @@ export interface UpdateStatus {
   progress: number | null
   /** Notas de la release o mensaje de error. */
   message: string | null
+}
+
+// ── IA: proveedores de texto ─────────────────────────────────────────────
+// Rust: src-tauri/src/settings.rs (Ai, ModelRef…) y src-tauri/src/ai/.
+
+/**
+ * "anthropic" | "openai" | "deepseek" | "gemini" | "openrouter" | "custom"
+ * (cualquier API compatible con OpenAI) | "local" (la IA local de Winkit).
+ */
+export type ProviderId = 'anthropic' | 'openai' | 'deepseek' | 'gemini' | 'openrouter' | 'custom' | 'local'
+
+/** Herramientas que usan IA; cada una puede tener su propio modelo. */
+export type AiTool = 'writing' | 'understand' | 'launcher' | 'assistant'
+
+export interface ModelRef {
+  provider: ProviderId
+  /** Id del modelo en ese proveedor ("claude-haiku-5-5", "gpt-…", id del catálogo local…). */
+  model: string
+}
+
+export interface CustomProvider {
+  name: string
+  /** Raíz de la API compatible con OpenAI, p. ej. "http://192.168.1.20:8000/v1". */
+  baseUrl: string
+}
+
+export interface LocalAi {
+  enabled: boolean
+  /** Id del modelo del catálogo ("" = ninguno instalado). */
+  model: string
+  gpu: boolean
+  context: number
+  /** Minutos sin uso tras los que se libera la memoria (0 = nunca). */
+  unloadAfterMinutes: number
+}
+
+export interface Ai {
+  default: ModelRef
+  /** Si una herramienta no está, usa `default`. */
+  tools: Partial<Record<AiTool, ModelRef>>
+  custom: CustomProvider
+  local: LocalAi
+}
+
+export interface ProviderInfo {
+  id: ProviderId
+  /** "Claude (Anthropic)", "OpenAI", "Mi servidor"… */
+  name: string
+  needsKey: boolean
+  hasKey: boolean
+  /** La key viene de una variable de entorno y no se puede cambiar aquí. */
+  keyFromEnv: boolean
+  /** Dónde se consigue la key (consola del proveedor). */
+  keyUrl: string | null
+  /** Listo para usarse (key puesta, servidor configurado o IA local instalada). */
+  ready: boolean
+}
+
+export interface ModelInfo {
+  id: string
+  name: string
+  /** Nota corta: "Rápido y barato", "4,9 GB", "Recomendado"… */
+  hint: string | null
+  /** El que Winkit propone en ese proveedor (rápido y barato). */
+  recommended: boolean
+}
+
+export interface AiTestResult {
+  ok: boolean
+  /** Texto de error, o la respuesta de prueba. */
+  message: string
+  /** Latencia hasta la respuesta completa. */
+  ms: number
+}
+
+/** Un modelo del catálogo de la IA local. */
+export interface LocalModel {
+  id: string
+  name: string
+  /** Para qué sirve, en una línea. */
+  description: string
+  sizeMb: number
+  /** Memoria aproximada que necesita (VRAM con GPU, RAM sin ella). */
+  memoryGb: number
+  installed: boolean
+  recommended: boolean
+}
+
+export interface LocalAiStatus {
+  /** off · downloading · verifying · starting · ready (cargado) · idle (instalado, sin cargar) · error */
+  state: 'off' | 'downloading' | 'verifying' | 'starting' | 'ready' | 'idle' | 'error'
+  /** 0–1 durante la descarga. */
+  progress: number | null
+  /** Qué se descarga ("Motor llama.cpp", "Qwen…") o el error. */
+  message: string | null
+  /** "GPU (Vulkan): NVIDIA GeForce…" o "CPU". */
+  backend: string | null
+  /** Modelo cargado o instalado. */
+  model: string | null
+}
+
+// ── Voz (texto a voz) ────────────────────────────────────────────────────
+// Rust: src-tauri/src/voice/.
+
+export type VoiceEngineId = 'windows' | 'kokoro' | 'elevenlabs' | 'openai'
+
+export interface Voice {
+  engine: VoiceEngineId
+  /** Id de la voz en ese motor ("" = la predeterminada). */
+  voice: string
+  /** 1 = normal (0.5–2). */
+  speed: number
+  /** 0–1. */
+  volume: number
+}
+
+export interface VoiceEngineInfo {
+  id: VoiceEngineId
+  name: string
+  /** "Gratis, sin conexión", "De pago: ~0,04–0,08 $ / 1.000 caracteres"… */
+  hint: string
+  needsKey: boolean
+  hasKey: boolean
+  keyFromEnv: boolean
+  keyUrl: string | null
+  /** Hay que descargarlo antes de usarlo (Kokoro). */
+  needsDownload: boolean
+  installed: boolean
+  downloadMb: number | null
+  ready: boolean
+}
+
+export interface VoiceInfo {
+  id: string
+  name: string
+  /** "es-ES", "en-US"… */
+  language: string
+  /** "Mujer", "Hombre" o null. */
+  gender: string | null
+}
+
+export interface VoiceStatus {
+  /** idle · downloading · loading · speaking · error */
+  state: 'idle' | 'downloading' | 'loading' | 'speaking' | 'error'
+  progress: number | null
+  message: string | null
+}
+
+// ── Avisos (la esquina) ──────────────────────────────────────────────────
+// Rust: src-tauri/src/palette.rs (Notice, NoticeAction).
+
+export type NoticeKind = 'info' | 'success' | 'progress' | 'warning' | 'error' | 'color'
+
+export interface NoticeAction {
+  label: string
+  /** "openFile" | "reveal" | "openSettings" | "retryClip" | "installUpdate" */
+  action: string
+  arg: string | null
+  /** El botón principal (color de acento). */
+  primary: boolean
+}
+
+export interface Notice {
+  kind: NoticeKind
+  title: string
+  detail: string | null
+  /** Muestra de color ("#RRGGBB") en los de tipo "color". */
+  color: string | null
+  actions: NoticeAction[]
+  /** Cuánto tarda en irse solo; 0 = no se va solo («Guardando…»). */
+  durationMs: number
+  /** Dónde sale ("bottomRight"…, "cursor"): de ahí entra deslizándose. */
+  placement: string
+  /** Seguidos del mismo grupo se transforman en el sitio en vez de volver a entrar. */
+  group: string | null
 }

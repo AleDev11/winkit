@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { G, Icon } from '../../components/Icon'
+import { useDragHandle } from '../../components/useDragHandle'
 import { ProgressRing } from '../../components/ProgressRing'
+import { SpeakButton } from '../../components/SpeakButton'
 import { palette, ui } from '../../lib/api'
 import { hasChanges, wordDiff } from '../../shared/diff'
 import type { PaletteInit, RunRequest } from '../../shared/types'
@@ -14,6 +16,7 @@ export function RunView(props: {
   /** Atajo directo con reemplazo automático: Rust pega el resultado y oculta la ventana. */
   autoReplace: boolean
 }): React.JSX.Element {
+  const drag = useDragHandle()
   const { init, request, onBack, autoReplace } = props
   const { state, start, cancel } = useRun()
   // Las traducciones se leen mejor limpias; el resto, con los cambios marcados.
@@ -92,7 +95,7 @@ export function RunView(props: {
 
   return (
     <div className="run-view">
-      <header className="run-head">
+      <header className="run-head" onMouseDown={drag}>
         {onBack && (
           <button className="btn subtle sm icon-only" onClick={back} title="Volver al menú (Alt+←)" aria-label="Volver al menú">
             <Icon glyph={G.back} size={12} />
@@ -189,6 +192,7 @@ export function RunView(props: {
               </span>
             )}
             <span className="spacer" />
+            <SpeakButton text={output} disabled={!done} className="btn subtle icon-only" iconOnly />
             <button
               className="btn subtle icon-only"
               disabled={streaming}

@@ -55,7 +55,17 @@ export function Palette(): React.JSX.Element {
     setSeq((s) => s + 1)
   }, [])
 
-  const rootRef = useAutoResize<HTMLDivElement>(palette.resize, init?.session)
+  // «Entender» es una ventana normal (la mueves y la redimensionas tú) y llena
+  // la ventana; el resto miden lo que su contenido.
+  const free = view.kind === 'understand'
+  useEffect(() => {
+    if (init) void palette.setFree(free)
+  }, [free, init])
+  const resize = useCallback(
+    (w: number, h: number) => (free ? Promise.resolve() : palette.resize(w, h)),
+    [free]
+  )
+  const rootRef = useAutoResize<HTMLDivElement>(resize, init?.session)
 
   const key = `${init?.session ?? 0}:${seq}`
   return (

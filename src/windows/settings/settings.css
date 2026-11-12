@@ -554,21 +554,10 @@ a.btn {
   flex: 0 1 auto;
   min-width: 0;
 }
-.sub-card .select-wrap {
+.sub-card .dropdown {
+  width: 300px !important;
   min-width: 0;
-  width: 300px;
   max-width: 100%;
-}
-.sub-card .select {
-  width: 100%;
-  text-overflow: ellipsis;
-}
-.select:disabled {
-  background: var(--control-disabled);
-  color: var(--text-disabled);
-}
-.select-wrap:has(.select:disabled)::after {
-  color: var(--text-disabled);
 }
 
 /* Medidor de nivel del micrófono, como el de Configuración de Windows. */
@@ -625,6 +614,39 @@ a.btn {
   font-variant-numeric: tabular-nums;
 }
 
+/* Voz */
+.voice-note {
+  color: var(--caution);
+}
+.voice-fallback {
+  padding: 0 4px;
+}
+.voice-download,
+.voice-try {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.voice-bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--control-strong);
+  overflow: hidden;
+}
+.voice-bar > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent-fill);
+  transition: width 200ms linear;
+}
+.voice-try textarea.input {
+  width: 100%;
+  resize: vertical;
+  min-height: 52px;
+}
+
 @media (max-width: 720px) {
   .settings {
     grid-template-columns: 64px 1fr;
@@ -639,4 +661,28 @@ a.btn {
   .nav-item {
     padding: 0 14px;
   }
+}
+
+/* ── IA ─────────────────────────────────────────────────────────────── */
+
+/* Progreso de una descarga de la IA local. */
+.ai-progress {
+  display: block;
+  width: 100%;
+  max-width: 420px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--control-strong);
+  overflow: hidden;
+}
+.ai-progress > span {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: var(--accent-fill);
+  transition: width 200ms linear;
+}
+.card-desc .card-note {
+  display: block;
+  margin-top: 2px;
 }

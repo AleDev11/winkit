@@ -1,6 +1,6 @@
 //! El buscador (Alt+Espacio): barra flotante centrada, como Spotlight.
 
-use crate::claude::{self, RunEvent};
+use crate::ai::{self, RunEvent};
 use crate::settings;
 use crate::ui::{self, LAUNCHER};
 use crate::win::{apps, screen};
@@ -69,7 +69,7 @@ pub fn toggle() {
         let mut st = state();
         st.session += 1;
         st.monitor = screen::cursor();
-        let init = LauncherInit { session: st.session, engine_label: s.engine_label().into(), model_label: s.model_label() };
+        let init = LauncherInit { session: st.session, engine_label: s.engine_label().into(), model_label: ai::label(&s, &s.ai.for_tool("launcher")) };
         st.init = Some(init.clone());
         init
     };
@@ -87,7 +87,7 @@ pub fn resize(_width: f64, height: f64) {
 
 pub fn ask(question: String, ch: Channel<RunEvent>) {
     let s = settings::get();
-    let _ = ch.send(RunEvent::Start { model: s.model_label(), from: None, to: None });
+    let _ = ch.send(RunEvent::Start { model: ai::label(&s, &s.ai.for_tool("launcher")), from: None, to: None });
     let mut st = state();
     if let Some(t) = st.task.take() {
         t.abort();
@@ -102,7 +102,7 @@ pub fn ask(question: String, ch: Channel<RunEvent>) {
                 let _ = delta_ch.send(RunEvent::Delta { text: t.to_string() });
             }
         };
-        let _ = match claude::ask(&s, &question, &on_delta).await {
+        let _ = match ai::ask(&s, &question, &on_delta).await {
             Ok(text) => ch.send(RunEvent::Done { text }),
             Err(f) => ch.send(RunEvent::Error { message: f.message, open_settings: f.open_settings }),
         };

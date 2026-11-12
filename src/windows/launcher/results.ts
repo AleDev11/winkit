@@ -28,7 +28,7 @@ export interface Row {
   action: RowAction
 }
 
-// Una pregunta de verdad va antes a Claude; una palabra suelta, antes a la web.
+// Una pregunta de verdad va antes a la IA; una palabra suelta, antes a la web.
 const QUESTION =
   /^(qué|que|cómo|como|cuál|cual|cuáles|cuales|cuánto|cuanto|cuánta|cuanta|cuántos|cuantos|por qué|porque|dónde|donde|quién|quien|cuándo|cuando|explica|explícame|resume|dime|escribe|what|how|why|when|where|who|which|explain|write|summarize|tell me)\b/i
 
@@ -121,7 +121,7 @@ export function buildRows(query: string, apps: AppEntry[], engineLabel: string, 
     key: 'claude',
     group: 'claude',
     glyph: G.sparkle,
-    title: 'Preguntar a Claude',
+    title: 'Preguntar a la IA',
     subtitle: `«${q}» · ${modelLabel}`,
     verb: 'Preguntar',
     action: { kind: 'ask', question: q }

@@ -5,12 +5,16 @@ import { ProgressRing } from '../../components/ProgressRing'
 import { settings as api } from '../../lib/api'
 import type { Settings, SettingsState, ShortcutStatus } from '../../shared/types'
 import { AboutPage, ActionsPage, ColorPage, GeneralPage, LanguagesPage, SearchPage, ShortcutsPage } from './pages'
+import { AiPage } from './AiPage'
 import { ClipsPage } from './ClipsPage'
+import { VoicePage } from './VoicePage'
 
-export type PageId = 'general' | 'shortcuts' | 'languages' | 'actions' | 'search' | 'color' | 'clips' | 'about'
+export type PageId = 'general' | 'ai' | 'voice' | 'shortcuts' | 'languages' | 'actions' | 'search' | 'color' | 'clips' | 'about'
 
 const PAGES: { id: PageId; label: string; glyph: string }[] = [
   { id: 'general', label: 'General', glyph: G.settings },
+  { id: 'ai', label: 'IA', glyph: G.sparkle },
+  { id: 'voice', label: 'Voz', glyph: G.volume },
   { id: 'shortcuts', label: 'Atajos', glyph: G.keyboard },
   { id: 'languages', label: 'Idiomas', glyph: G.language },
   { id: 'actions', label: 'Acciones', glyph: G.lightning },
@@ -44,8 +48,8 @@ export function SettingsApp(): React.JSX.Element {
       .get()
       .then((st) => {
         setState(st)
-        // Sin API key, lo primero es ponerla.
-        if (!st.hasKey) setPage('general')
+        // Sin IA lista para escribir, lo primero es configurarla.
+        if (!st.aiReady) setPage('ai')
       })
       .catch((err: unknown) => setLoadError(String(err)))
   }, [])
@@ -98,9 +102,7 @@ export function SettingsApp(): React.JSX.Element {
               >
                 <Icon glyph={p.glyph} className="nav-icon" />
                 <span>{p.label}</span>
-                {p.id === 'general' && state && !state.hasKey && !state.keyFromEnv && (
-                  <span className="nav-badge" title="Falta la API key" />
-                )}
+                {p.id === 'ai' && state && !state.aiReady && <span className="nav-badge" title="Falta configurar la IA" />}
               </button>
             </li>
           ))}
@@ -148,6 +150,8 @@ export function SettingsApp(): React.JSX.Element {
               switch (page) {
                 case 'general':
                   return <GeneralPage {...props} />
+                case 'ai':
+                  return <AiPage {...props} />
                 case 'shortcuts':
                   return <ShortcutsPage {...props} />
                 case 'languages':
@@ -158,6 +162,8 @@ export function SettingsApp(): React.JSX.Element {
                   return <SearchPage {...props} />
                 case 'color':
                   return <ColorPage {...props} />
+                case 'voice':
+                  return <VoicePage {...props} />
                 case 'clips':
                   return <ClipsPage {...props} />
                 case 'about':

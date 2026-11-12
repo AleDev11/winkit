@@ -57,7 +57,11 @@ export const G = {
   save: '',
   speed: '',
   video: '',
-  volume: ''
+  volume: '',
+  // Voz
+  stop: '',
+  download: '',
+  play: ''
 } as const
 
 export function Icon({ glyph, size, className }: { glyph: string; size?: number; className?: string }): React.JSX.Element {

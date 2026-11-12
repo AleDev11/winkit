@@ -56,11 +56,25 @@ function useAudioDevices(): AudioDevices | null {
 
 /** Opciones de un selector de dispositivo: el predeterminado de Windows (con su
  *  nombre), cada dispositivo, y el guardado si ya no está conectado. */
-function deviceOptions(list: AudioDevice[] | undefined, saved: string, missing: string): { value: string; label: string }[] {
+/**
+ * Windows llama a los dispositivos «Tipo (Producto)»: «Microphone (Yeti Stereo
+ * Microphone)». En el desplegable va primero el producto, que es lo que los
+ * distingue, y el tipo debajo.
+ */
+export function splitDeviceName(name: string): { label: string; hint: string | null } {
+  const m = /^(.+?) \((.+)\)$/.exec(name.trim())
+  return m ? { label: m[2], hint: m[1] } : { label: name, hint: null }
+}
+
+function deviceOptions(
+  list: AudioDevice[] | undefined,
+  saved: string,
+  missing: string
+): { value: string; label: string; hint?: string | null }[] {
   const def = list?.find((d) => d.isDefault)
-  const options = [
-    { value: '', label: def ? `Predeterminado de Windows (${def.name})` : 'Predeterminado de Windows' },
-    ...(list ?? []).map((d) => ({ value: d.id, label: d.name }))
+  const options: { value: string; label: string; hint?: string | null }[] = [
+    { value: '', label: 'Predeterminado de Windows', hint: def ? splitDeviceName(def.name).label : null },
+    ...(list ?? []).map((d) => ({ value: d.id, ...splitDeviceName(d.name) }))
   ]
   if (saved && list && !list.some((d) => d.id === saved)) options.push({ value: saved, label: missing })
   return options
