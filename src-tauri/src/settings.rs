@@ -84,6 +84,20 @@ pub struct CustomAction {
     pub prompt: String,
 }
 
+/// Tamaño de una ventana en px lógicos (CSS).
+#[derive(Clone, Copy, Serialize, Deserialize, PartialEq, Debug)]
+#[serde(rename_all = "camelCase", default)]
+pub struct WindowSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+impl Default for WindowSize {
+    fn default() -> Self {
+        Self { width: 880.0, height: 540.0 }
+    }
+}
+
 // ---------------------------------------------------------------- IA y voz
 
 /// Qué modelo usa algo: proveedor + id del modelo en ese proveedor.
@@ -190,6 +204,8 @@ pub struct Settings {
     /// Dónde salen los avisos: "bottomRight" (por defecto), "bottomLeft", "topRight",
     /// "topLeft" o "cursor" (junto al ratón).
     pub notice_position: String,
+    /// Tamaño de «Entender» (px lógicos): se recuerda al cerrarlo.
+    pub understand_size: WindowSize,
     pub clips: Clips,
     pub ai: Ai,
     pub voice: Voice,
@@ -211,6 +227,7 @@ impl Default for Settings {
             search_engine: "google".into(),
             color_format: "hex".into(),
             notice_position: "bottomRight".into(),
+            understand_size: WindowSize::default(),
             clips: Clips::default(),
             ai: Ai::default(),
             voice: Voice::default(),
@@ -233,11 +250,6 @@ pub fn model_label(m: &ModelRef) -> String {
 }
 
 impl Settings {
-    /// El modelo predeterminado, legible. Para el de una herramienta: `model_label(&s.ai.for_tool(..))`.
-    pub fn model_label(&self) -> String {
-        model_label(&self.ai.default)
-    }
-
     pub fn search_url(&self, query: &str) -> String {
         let base = match self.search_engine.as_str() {
             "duckduckgo" => "https://duckduckgo.com/?q=",

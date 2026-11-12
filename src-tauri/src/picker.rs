@@ -140,7 +140,9 @@ pub fn done(color: Option<Rgb>) {
     let text = format(&c, &settings::get().color_format);
     clipboard::write_text(&text, false);
     let hex = format!("#{:02X}{:02X}{:02X}", c.r, c.g, c.b);
-    crate::palette::notice(format!("{text} copiado"), false, Some(hex));
+    // Debajo, el mismo color en otro formato por si hace falta.
+    let other = if settings::get().color_format == "hex" { format(&c, "rgb") } else { hex.clone() };
+    crate::palette::show_notice(crate::palette::Notice::color(format!("{text} copiado"), hex).detail(other));
 }
 
 #[cfg(test)]

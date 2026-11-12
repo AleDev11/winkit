@@ -1,8 +1,8 @@
 //! La paleta: todas las herramientas de escritura sobre el texto seleccionado
-//! en cualquier app. Lee la selección con Ctrl+C, deja trabajar a Claude y
+//! en cualquier app. Lee la selección con Ctrl+C, deja trabajar a la IA y
 //! pega el resultado con Ctrl+V, devolviendo el portapapeles como estaba.
 
-use crate::claude::{self, RunEvent, RunRequest};
+use crate::ai::{self, RunEvent, RunRequest};
 use crate::lang::{self, LanguageInfo};
 use crate::settings::{self, CustomAction};
 use crate::ui::{self, PALETTE};
@@ -14,12 +14,85 @@ use tauri::async_runtime::JoinHandle;
 use tauri::ipc::Channel;
 use tauri::Emitter;
 
+/// Botón de un aviso. `action`: "openFile" (abrir `arg`), "reveal" (mostrar
+/// `arg` en el Explorador), "openSettings", "retryClip" o "installUpdate".
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NoticeAction {
+    pub label: String,
+    pub action: &'static str,
+    pub arg: Option<String>,
+    /// El botón principal (color de acento). Uno como mucho.
+    pub primary: bool,
+}
+
+/// Un aviso de la esquina: «Clip guardado», «#1E90FF copiado», un error…
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Notice {
-    pub message: String,
-    pub open_settings: bool,
+    /// "info" | "success" | "progress" | "warning" | "error" | "color"
+    pub kind: &'static str,
+    pub title: String,
+    pub detail: Option<String>,
+    /// Muestra de color ("#RRGGBB") en los de tipo "color".
     pub color: Option<String>,
+    pub actions: Vec<NoticeAction>,
+    /// Cuánto tarda en irse solo (la vista lo cuenta y lo pausa al pasar el
+    /// ratón). 0 = no se va solo (los de «en curso»).
+    pub duration_ms: u64,
+    /// Dónde sale ("bottomRight"…, "cursor"): de ahí entra deslizándose.
+    pub placement: String,
+    /// Dos avisos seguidos del mismo grupo («Guardando clip…» → «Clip guardado»)
+    /// se transforman en el sitio en vez de volver a entrar.
+    pub group: Option<String>,
+}
+
+impl Notice {
+    fn new(kind: &'static str, title: impl Into<String>) -> Self {
+        Self { kind, title: title.into(), detail: None, color: None, actions: Vec::new(), duration_ms: 0, placement: String::new(), group: None }
+    }
+    pub fn info(title: impl Into<String>) -> Self {
+        Self::new("info", title)
+    }
+    pub fn success(title: impl Into<String>) -> Self {
+        Self::new("success", title)
+    }
+    pub fn progress(title: impl Into<String>) -> Self {
+        Self::new("progress", title)
+    }
+    pub fn warning(title: impl Into<String>) -> Self {
+        Self::new("warning", title)
+    }
+    pub fn error(title: impl Into<String>) -> Self {
+        Self::new("error", title)
+    }
+    pub fn color(title: impl Into<String>, hex: impl Into<String>) -> Self {
+        Self { color: Some(hex.into()), ..Self::new("color", title) }
+    }
+    pub fn detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+    pub fn group(mut self, group: &str) -> Self {
+        self.group = Some(group.into());
+        self
+    }
+    pub fn action(mut self, label: &str, action: &'static str, arg: Option<String>, primary: bool) -> Self {
+        self.actions.push(NoticeAction { label: label.into(), action, arg, primary });
+        self
+    }
+
+    /// Lo justo para leerlo; más si hay botones o es un error.
+    fn auto_duration(&self) -> u64 {
+        let chars = (self.title.chars().count() + self.detail.as_ref().map_or(0, |d| d.chars().count())) as u64;
+        match self.kind {
+            "progress" => 0,
+            "color" => 3500,
+            "error" | "warning" => (5000 + chars * 40).min(10_000),
+            _ if !self.actions.is_empty() => (5000 + chars * 40).min(9000),
+            _ => (2500 + chars * 40).min(6000),
+        }
+    }
 }
 
 #[derive(Clone, Serialize)]
@@ -59,6 +132,10 @@ struct State {
     /// Los avisos van a una esquina del monitor del cursor ("bottomRight"…);
     /// None = se colocan por `anchor`.
     corner: Option<String>,
+    /// «Entender»: ventana normal (se mueve y cambia de tamaño); el contenido no la redimensiona.
+    free: bool,
+    /// El usuario la ha arrastrado: al cambiar de tamaño se queda donde la dejó.
+    user_moved: bool,
     focused: bool,
     busy: bool,
     /// Atajo directo con reemplazo automático: se consume con el primer resultado.
@@ -72,6 +149,8 @@ static STATE: Mutex<State> = Mutex::new(State {
     hwnd: 0,
     anchor: None,
     corner: None,
+    free: false,
+    user_moved: false,
     focused: false,
     busy: false,
     auto_pending: false,
@@ -170,6 +249,7 @@ fn build_init(mode: &'static str, text: String, request: Option<RequestOut>, aut
     let language = lang::info(&text, &s);
     let mut st = state();
     st.session += 1;
+    st.user_moved = false;
     PaletteInit {
         session: st.session,
         mode,
@@ -183,7 +263,7 @@ fn build_init(mode: &'static str, text: String, request: Option<RequestOut>, aut
         my_language: s.my_language.clone(),
         translate_target: s.translate_target.clone(),
         custom_actions: s.custom_actions.clone(),
-        model_label: s.model_label(),
+        model_label: ai::label(&s, &s.ai.for_tool(if mode == "understand" { "understand" } else { "writing" })),
     }
 }
 
@@ -194,14 +274,21 @@ fn show(init: PaletteInit, focus: bool) {
     let _ = w.emit("palette:init", &init);
     // El lector se comporta como una ventana normal; el resto, como un menú flotante.
     let _ = w.set_always_on_top(!understand);
+    if understand {
+        set_free(true);
+    } else {
+        set_free(false);
+    }
     // Tamaño provisional hasta que el renderer mida su contenido.
     let (cw, ch) = match init.mode {
-        "understand" => (880.0, 540.0),
+        "understand" => (0.0, 0.0),
         "notice" => (320.0, 56.0),
         "run" => (520.0, 160.0),
         _ => (440.0, 320.0),
     };
-    place(cw, ch);
+    if !understand {
+        place(cw, ch);
+    }
     if focus {
         let _ = w.show();
         let _ = w.set_focus();
@@ -214,6 +301,16 @@ fn show(init: PaletteInit, focus: bool) {
 /// Coloca la paleta para un contenido de `w`×`h` px CSS.
 pub fn place(w: f64, h: f64) {
     let Some(win) = ui::get(PALETTE) else { return };
+    {
+        let st = state();
+        if st.free {
+            return;
+        }
+        if st.user_moved {
+            drop(st);
+            return ui::resize_in_place(&win, w, h);
+        }
+    }
     let (anchor, corner) = { let st = state(); (st.anchor, st.corner.clone()) };
     if let Some(c) = corner {
         return ui::place_corner(&win, screen::cursor(), &c, w, h);
@@ -224,29 +321,42 @@ pub fn place(w: f64, h: f64) {
     }
 }
 
+/// Aviso sencillo de texto. Con `open_settings`, de atención con «Abrir ajustes».
 pub fn notice(message: impl Into<String>, open_settings: bool, color: Option<String>) {
+    let n = match (color, open_settings) {
+        (Some(hex), _) => Notice::color(message, hex),
+        (None, true) => Notice::warning(message).action("Abrir ajustes", "openSettings", None, true),
+        (None, false) => Notice::info(message),
+    };
+    show_notice(n);
+}
+
+/// Muestra un aviso en la esquina de Ajustes (o junto al ratón), sin quitar el foco.
+pub fn show_notice(mut n: Notice) {
+    let pos = settings::get().notice_position;
     {
         let mut st = state();
-        // Por defecto, abajo a la derecha; «cursor» los deja junto al ratón como antes.
-        let pos = settings::get().notice_position;
         st.anchor = Some(screen::cursor());
-        st.corner = (pos != "cursor").then_some(pos);
+        st.corner = (pos != "cursor").then(|| pos.clone());
         st.hwnd = 0;
     }
-    let init = build_init("notice", String::new(), None, false, false, Some(Notice { message: message.into(), open_settings, color }));
-    let session = init.session;
-    // Que dé tiempo a leerlo: 2 s más ~50 ms por carácter, hasta 7 s.
-    let chars = init.notice.as_ref().map_or(0, |n| n.message.chars().count()) as u64;
-    let visible = Duration::from_millis((2000 + chars * 50).min(7000));
-    show(init, open_settings);
-    if !open_settings {
-        tauri::async_runtime::spawn(async move {
-            tokio::time::sleep(visible).await;
-            if state().session == session {
-                close(false);
-            }
-        });
+    if n.duration_ms == 0 {
+        n.duration_ms = n.auto_duration();
     }
+    n.placement = pos;
+    let duration = n.duration_ms;
+    let init = build_init("notice", String::new(), None, false, false, Some(n));
+    let session = init.session;
+    show(init, false);
+    // La vista lo cierra al acabar la cuenta (y la pausa al pasar el ratón);
+    // esto es solo por si no llega a hacerlo.
+    let safety = if duration == 0 { 60_000 } else { duration + 30_000 };
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(safety)).await;
+        if state().session == session {
+            close(false);
+        }
+    });
 }
 
 pub fn close(restore_focus: bool) {
@@ -263,12 +373,14 @@ pub fn close(restore_focus: bool) {
     };
     let Some(w) = ui::get(PALETTE) else { return };
     if !w.is_visible().unwrap_or(false) {
-        return;
+        return set_free(false);
     }
+    remember_free_size(&w);
     if restore_focus && hwnd != 0 {
         input::set_foreground_window(hwnd);
     }
     hide_window(&w);
+    set_free(false);
 }
 
 pub fn on_focus_change(focused: bool) {
@@ -327,11 +439,13 @@ fn present(kind: Trigger, cap: Capture, anchor: (i32, i32), s: &settings::Settin
     if text.trim().is_empty() {
         return match kind {
             Trigger::Understand => open_understand_empty(),
-            _ => notice("No hay texto seleccionado.", false, None),
+            _ => show_notice(Notice::info("No hay texto seleccionado").detail("Selecciona un texto en cualquier app y vuelve a pulsar el atajo.")),
         };
     }
-    if settings::api_key().is_none() {
-        return notice("Añade tu API key de Anthropic para empezar.", true, None);
+    let tool = if kind == Trigger::Understand { "understand" } else { "writing" };
+    let provider = s.ai.for_tool(tool).provider;
+    if !ai::ready(s, &provider) {
+        return notice(ai::not_ready_message(s, &provider), true, None);
     }
     {
         let mut st = state();
@@ -375,14 +489,14 @@ impl Throttle {
 pub fn run(req: RunRequest, ch: Channel<RunEvent>) {
     let s = settings::get();
     let mut req = req;
-    let (from, to, fallback) = if claude::is_translation(&req.action) {
+    let (from, to, fallback) = if ai::is_translation(&req.action) {
         let info = lang::info(&req.text, &s);
         let to = req.language.clone().unwrap_or(if req.action == "translate" {
             info.translate_to.clone()
         } else {
             info.understand_to.clone()
         });
-        // Si no se ha podido detectar el idioma, que Claude decida con la regla de respaldo.
+        // Si no se ha podido detectar el idioma, que la IA decida con la regla de respaldo.
         let fallback = info.detected.is_none().then(|| {
             let mine = if req.action == "translate" { &s.translate_target } else { &s.my_language };
             if lang::same(&to, mine) {
@@ -396,7 +510,8 @@ pub fn run(req: RunRequest, ch: Channel<RunEvent>) {
     } else {
         (None, None, None)
     };
-    let _ = ch.send(RunEvent::Start { model: s.model_label(), from, to });
+    let model = ai::label(&s, &s.ai.for_tool(ai::tool_for_action(&req.action)));
+    let _ = ch.send(RunEvent::Start { model, from, to });
 
     let mut st = state();
     if let Some(t) = st.task.take() {
@@ -411,7 +526,7 @@ pub fn run(req: RunRequest, ch: Channel<RunEvent>) {
                 let _ = delta_ch.send(RunEvent::Delta { text: t.to_string() });
             }
         };
-        let result = claude::run(&s, &req, fallback.as_deref(), &on_delta).await;
+        let result = ai::run(&s, &req, fallback.as_deref(), &on_delta).await;
         let (auto, hwnd, focused) = {
             let mut st = state();
             if st.session != session {
@@ -463,4 +578,54 @@ pub async fn replace(text: String) {
         hide_window(&w);
     }
     paste_into(hwnd, &text).await;
+}
+
+// ------------------------------------------------------------ mover y redimensionar
+
+/// «Entender» se comporta como una ventana normal: se mueve, cambia de tamaño
+/// (con un mínimo) y recuerda el tamaño. El resto de vistas son menús que
+/// miden lo que su contenido. La vista lo pide al cambiar de modo.
+pub fn set_free(free: bool) {
+    let Some(w) = ui::get(PALETTE) else { return };
+    {
+        let mut st = state();
+        if st.free == free {
+            return;
+        }
+        st.free = free;
+    }
+    let _ = w.set_resizable(free);
+    if free {
+        let _ = w.set_min_size(Some(tauri::LogicalSize::new(MIN_FREE.0, MIN_FREE.1)));
+        let size = settings::get().understand_size;
+        ui::place_center(&w, screen::cursor(), size.width.max(MIN_FREE.0), size.height.max(MIN_FREE.1));
+    } else {
+        let _ = w.set_min_size(None::<tauri::LogicalSize<f64>>);
+    }
+}
+
+const MIN_FREE: (f64, f64) = (440.0, 320.0);
+
+/// Arrastrar la ventana desde la cabecera. A partir de aquí, si el contenido
+/// cambia de tamaño, se queda donde el usuario la ha dejado.
+pub fn drag() {
+    let Some(w) = ui::get(PALETTE) else { return };
+    state().user_moved = true;
+    let _ = w.start_dragging();
+}
+
+/// Guarda el tamaño de «Entender» para la próxima vez.
+fn remember_free_size(w: &tauri::WebviewWindow) {
+    if !state().free {
+        return;
+    }
+    let (Ok(size), Ok(scale)) = (w.inner_size(), w.scale_factor()) else { return };
+    let size = size.to_logical::<f64>(scale);
+    let saved = settings::get().understand_size;
+    if (saved.width - size.width).abs() < 1.0 && (saved.height - size.height).abs() < 1.0 {
+        return;
+    }
+    let _ = settings::save_patch(serde_json::json!({
+        "understandSize": { "width": size.width.round(), "height": size.height.round() }
+    }));
 }

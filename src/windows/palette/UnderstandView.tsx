@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Dropdown } from '../../components/Dropdown'
 import { G, Icon } from '../../components/Icon'
+import { useDragHandle } from '../../components/useDragHandle'
 import { ProgressRing } from '../../components/ProgressRing'
+import { SpeakButton } from '../../components/SpeakButton'
 import { palette, ui } from '../../lib/api'
 import type { PaletteInit } from '../../shared/types'
 import { modelLabel } from './actions'
@@ -13,6 +16,7 @@ const DETECT_DELAY = 600
  * izquierda y la traducción a la derecha. Nunca toca la app de origen.
  */
 export function UnderstandView(props: { init: PaletteInit; text: string; language: string }): React.JSX.Element {
+  const drag = useDragHandle()
   const { init } = props
   const { state, start } = useRun()
   const [text, setText] = useState(props.text)
@@ -125,9 +129,9 @@ export function UnderstandView(props: { init: PaletteInit; text: string; languag
 
   return (
     <div className="understand-view">
-      <header className="u-head">
+      <header className="u-head" onMouseDown={drag}>
         <Icon glyph={G.book} className="u-head-icon" />
-        <span className="body-strong">Entender</span>
+        <span className="body-strong u-title">Entender</span>
         <span className="u-lang">
           {detecting ? (
             <ProgressRing size={14} />
@@ -138,22 +142,25 @@ export function UnderstandView(props: { init: PaletteInit; text: string; languag
             </span>
           )}
           <Icon glyph={G.chevronRight} size={10} className="faint" />
-          <span className="select-wrap sm">
-            <select className="select" value={language} onChange={(e) => onLanguageChange(e.target.value)} aria-label="Traducir a">
-              {languages.map((l) => (
-                <option key={l} value={l}>
-                  {l}
-                </option>
-              ))}
-            </select>
-          </span>
+          <Dropdown<string>
+            size="sm"
+            className="sm"
+            label="Traducir a"
+            value={language}
+            options={languages.map((l) => ({ value: l, label: l }))}
+            onChange={onLanguageChange}
+          />
         </span>
         <span className="spacer" />
-        <span className="caption faint">{modelLabel(state.model, init.modelLabel)}</span>
+        <span className="caption faint u-model" title={modelLabel(state.model, init.modelLabel)}>
+          {modelLabel(state.model, init.modelLabel)}
+        </span>
+        <SpeakButton text={state.text} disabled={state.status !== 'done'} />
         <button className="btn sm" disabled={state.status !== 'done'} onClick={copy} title="Copiar la traducción">
-          <Icon glyph={copied ? G.check : G.copy} /> {copied ? 'Copiado' : 'Copiar'}
+          <Icon glyph={copied ? G.check : G.copy} />
+          <span className="btn-label">{copied ? 'Copiado' : 'Copiar'}</span>
         </button>
-        <button className="btn subtle sm icon-only" onClick={() => void palette.close()} title="Cerrar (Esc)" aria-label="Cerrar">
+        <button className="btn subtle sm icon-only u-close" onClick={() => void palette.close()} title="Cerrar (Esc)" aria-label="Cerrar">
           <Icon glyph={G.close} size={10} />
         </button>
       </header>
@@ -215,15 +222,15 @@ export function UnderstandView(props: { init: PaletteInit; text: string; languag
       </main>
 
       <footer className="palette-foot hints">
-        <span>
+        <span className="u-hint">
           <kbd>Ctrl</kbd>
           <kbd>Enter</kbd> traducir
         </span>
-        <span>
+        <span className="u-hint">
           <kbd>Esc</kbd> cerrar
         </span>
         <span className="spacer" />
-        <span>No se reemplaza nada: solo es para leer.</span>
+        <span className="u-note">No se reemplaza nada: solo es para leer.</span>
       </footer>
     </div>
   )

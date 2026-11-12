@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { G, Icon } from '../../components/Icon'
+import { useDragHandle } from '../../components/useDragHandle'
 import { palette } from '../../lib/api'
 import { fold } from '../../shared/search'
 import type { PaletteInit, RunRequest } from '../../shared/types'
@@ -30,6 +31,7 @@ export function MenuView(props: {
   setState: (fn: (s: MenuState) => MenuState) => void
   go: (view: View) => void
 }): React.JSX.Element {
+  const drag = useDragHandle()
   const { init, state, setState, go } = props
   const [sel, setSel] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -154,7 +156,7 @@ export function MenuView(props: {
   return (
     // El foco se queda siempre en el campo: así las teclas funcionan aunque se haga clic en la lista.
     <div className="menu-view" onMouseDown={(e) => e.target !== inputRef.current && e.preventDefault()}>
-      <header className="menu-head">
+      <header className="menu-head" onMouseDown={drag}>
         {preview && (
           <div className="menu-context">
             <p className="menu-preview" title={text.length > 400 ? undefined : text}>

@@ -1,6 +1,6 @@
 //! Comandos que invocan las ventanas (ver src/lib/api.ts, mismos nombres).
 
-use crate::claude::{self, RunEvent, RunRequest};
+use crate::ai::{self, RunEvent, RunRequest};
 use crate::launcher::LauncherInit;
 use crate::palette::PaletteInit;
 use crate::picker::{PickerInit, Rgb};
@@ -72,6 +72,36 @@ pub fn palette_copy(text: String) {
 #[tauri::command]
 pub fn palette_close() {
     palette::close(true);
+}
+
+/// «Entender» (true) es una ventana normal que se mueve y cambia de tamaño; el resto, no.
+#[tauri::command]
+pub fn palette_set_free(free: bool) {
+    palette::set_free(free);
+}
+
+/// Empieza a arrastrar la ventana (pulsación en la cabecera).
+#[tauri::command]
+pub fn palette_drag() {
+    palette::drag();
+}
+
+/// Un botón de un aviso («Ver clip», «Reintentar»…). Cierra el aviso y hace lo suyo.
+#[tauri::command]
+pub async fn notice_action(action: String, arg: Option<String>) {
+    palette::close(false);
+    match (action.as_str(), arg) {
+        ("openFile", Some(path)) => system::open(&path),
+        ("reveal", Some(path)) => {
+            let _ = std::process::Command::new("explorer.exe").arg(format!("/select,{path}")).spawn();
+        }
+        ("openSettings", _) => ui::open_settings(),
+        ("retryClip", _) => drop(tauri::async_runtime::spawn(shortcuts::save_clip())),
+        ("installUpdate", _) => {
+            let _ = crate::updater::install_and_restart();
+        }
+        (other, _) => crate::log_warn!("avisos", "acción desconocida: {other}"),
+    }
 }
 
 // ------------------------------------------------------------ buscador
@@ -153,6 +183,8 @@ pub struct SettingsState {
     settings: settings::Settings,
     has_key: bool,
     key_from_env: bool,
+    /// El proveedor de «Escribir» está listo (key, servidor o IA local).
+    ai_ready: bool,
     shortcuts: Vec<ShortcutStatus>,
     version: String,
 }
@@ -171,10 +203,13 @@ pub struct KeyTestResult {
 
 #[tauri::command]
 pub fn settings_get() -> SettingsState {
+    let s = settings::get();
+    let ai_ready = ai::ready(&s, &s.ai.for_tool("writing").provider);
     SettingsState {
-        settings: settings::get(),
+        settings: s,
         has_key: settings::api_key().is_some(),
         key_from_env: settings::key_from_env().is_some(),
+        ai_ready,
         shortcuts: shortcuts::status(),
         version: ui::app().package_info().version.to_string(),
     }
@@ -198,6 +233,9 @@ pub fn settings_save(patch: Value) -> Result<SaveResult, String> {
     if patch.get("clips").is_some() {
         crate::replay::apply(&s.clips);
     }
+    if patch.get("ai").is_some() {
+        ai::local::apply(&s.ai.local);
+    }
     let shortcuts = if patch.get("shortcuts").is_some() { shortcuts::register_all() } else { shortcuts::status() };
     Ok(SaveResult { settings: s, shortcuts })
 }
@@ -208,7 +246,7 @@ pub async fn api_key_save(key: String) -> KeyTestResult {
     if key.is_empty() {
         return KeyTestResult { ok: false, message: "Pega tu API key de Anthropic.".into() };
     }
-    match claude::test_key(&key).await {
+    match ai::anthropic::test_key(&key).await {
         Ok(()) => match settings::set_api_key(&key) {
             Ok(()) => KeyTestResult { ok: true, message: "La API key funciona y está guardada.".into() },
             Err(e) => KeyTestResult { ok: false, message: e },
@@ -222,7 +260,7 @@ pub async fn api_key_test() -> KeyTestResult {
     let Some(key) = settings::api_key() else {
         return KeyTestResult { ok: false, message: "No hay ninguna API key guardada.".into() };
     };
-    match claude::test_key(&key).await {
+    match ai::anthropic::test_key(&key).await {
         Ok(()) => KeyTestResult { ok: true, message: "La API key funciona.".into() },
         Err(f) => KeyTestResult { ok: false, message: f.message },
     }

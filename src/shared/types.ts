@@ -123,6 +123,8 @@ export interface Settings {
   colorFormat: ColorFormat
   /** Dónde salen los avisos (clip guardado, color copiado…). "cursor" = junto al ratón. */
   noticePosition: NoticePosition
+  /** Tamaño de «Entender» (px lógicos), recordado al cerrarlo. */
+  understandSize: { width: number; height: number }
   clips: Clips
   ai: Ai
   voice: Voice
@@ -182,7 +184,7 @@ export interface PaletteInit {
   autoReplace: boolean
   /** Hay una ventana de origen donde pegar. False si se abrió sin selección. */
   canReplace: boolean
-  notice: { message: string; openSettings: boolean; color: string | null } | null
+  notice: Notice | null
   languages: string[]
   myLanguage: string
   translateTarget: string
@@ -217,6 +219,8 @@ export interface SettingsState {
   hasKey: boolean
   /** La key viene de la variable de entorno ANTHROPIC_API_KEY: no se puede cambiar desde Ajustes. */
   keyFromEnv: boolean
+  /** El proveedor que usa «Escribir» está listo (key, servidor propio o IA local instalada). */
+  aiReady: boolean
   shortcuts: ShortcutStatus[]
   version: string
 }
@@ -304,6 +308,8 @@ export interface ModelInfo {
   name: string
   /** Nota corta: "Rápido y barato", "4,9 GB", "Recomendado"… */
   hint: string | null
+  /** El que Winkit propone en ese proveedor (rápido y barato). */
+  recommended: boolean
 }
 
 export interface AiTestResult {
@@ -385,4 +391,33 @@ export interface VoiceStatus {
   state: 'idle' | 'downloading' | 'loading' | 'speaking' | 'error'
   progress: number | null
   message: string | null
+}
+
+// ── Avisos (la esquina) ──────────────────────────────────────────────────
+// Rust: src-tauri/src/palette.rs (Notice, NoticeAction).
+
+export type NoticeKind = 'info' | 'success' | 'progress' | 'warning' | 'error' | 'color'
+
+export interface NoticeAction {
+  label: string
+  /** "openFile" | "reveal" | "openSettings" | "retryClip" | "installUpdate" */
+  action: string
+  arg: string | null
+  /** El botón principal (color de acento). */
+  primary: boolean
+}
+
+export interface Notice {
+  kind: NoticeKind
+  title: string
+  detail: string | null
+  /** Muestra de color ("#RRGGBB") en los de tipo "color". */
+  color: string | null
+  actions: NoticeAction[]
+  /** Cuánto tarda en irse solo; 0 = no se va solo («Guardando…»). */
+  durationMs: number
+  /** Dónde sale ("bottomRight"…, "cursor"): de ahí entra deslizándose. */
+  placement: string
+  /** Seguidos del mismo grupo se transforman en el sitio en vez de volver a entrar. */
+  group: string | null
 }

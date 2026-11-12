@@ -82,7 +82,13 @@ export const palette = {
   replace: (text: string): Promise<void> => invoke('palette_replace', { text }),
   /** Copia `text` y cierra. */
   copyAndClose: (text: string): Promise<void> => invoke('palette_copy', { text }),
-  close: (): Promise<void> => invoke('palette_close')
+  close: (): Promise<void> => invoke('palette_close'),
+  /** «Entender» (true) es una ventana normal que se mueve y cambia de tamaño; menú, resultado y avisos, no. */
+  setFree: (free: boolean): Promise<void> => invoke('palette_set_free', { free }),
+  /** Un botón de un aviso: cierra el aviso y hace lo suyo (abrir el clip, reintentar…). */
+  noticeAction: (action: string, arg: string | null): Promise<void> => invoke('notice_action', { action, arg }),
+  /** Empieza a arrastrar la ventana (al pulsar en la cabecera). */
+  drag: (): Promise<void> => invoke('palette_drag')
 }
 
 export const launcher = {
@@ -230,5 +236,8 @@ export const voice = {
   onStatus: (cb: (s: VoiceStatus) => void) => subscribe<VoiceStatus>('voice:status', cb),
   /** Descarga el motor local (Kokoro). */
   install: (engine: VoiceEngineId): Promise<void> => invoke('voice_install', { engine }),
+  /** Cancela la descarga en curso (lo ya bajado se conserva y la siguiente sigue desde ahí). */
+  cancel: (): Promise<void> => invoke('voice_cancel'),
+  /** Borra lo descargado (si se está descargando, cancela y borra). */
   remove: (engine: VoiceEngineId): Promise<void> => invoke('voice_remove', { engine })
 }

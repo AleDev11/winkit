@@ -1,5 +1,6 @@
 import { useId } from 'react'
 import { Icon } from '../../components/Icon'
+import { Dropdown, type DropdownProps } from '../../components/Dropdown'
 
 /** Tarjeta de ajuste de Windows 11: icono, título y descripción a la izquierda; el control a la derecha. */
 export function Card(props: {
@@ -52,30 +53,9 @@ export function ToggleCard(props: {
   )
 }
 
-export function Select<T extends string>(props: {
-  value: T
-  options: { value: T; label: string }[]
-  onChange: (v: T) => void
-  label: string
-  disabled?: boolean
-}): React.JSX.Element {
-  return (
-    <span className="select-wrap">
-      <select
-        className="select"
-        value={props.value}
-        aria-label={props.label}
-        disabled={props.disabled}
-        onChange={(e) => props.onChange(e.target.value as T)}
-      >
-        {props.options.map((o) => (
-          <option key={o.value} value={o.value}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-    </span>
-  )
+/** Desplegable de Ajustes: el de Windows 11 (ver components/Dropdown.tsx). */
+export function Select<T extends string>(props: DropdownProps<T>): React.JSX.Element {
+  return <Dropdown<T> {...props} />
 }
 
 /** Lista de opciones excluyentes dentro de una tarjeta. */

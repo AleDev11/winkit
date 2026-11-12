@@ -106,7 +106,11 @@ async fn check_inner() -> Result<(), String> {
     STATE.lock().unwrap().ready = Some((update, bytes));
     set(UpdateStatus { state: "ready", version: Some(version.clone()), progress: Some(1.0), message: notes });
     crate::tray_update_ready(&version);
-    crate::palette::notice(format!("Winkit {version} está listo. Se instalará al reiniciar."), false, None);
+    crate::palette::show_notice(
+        crate::palette::Notice::success(format!("Winkit {version} está listo"))
+            .detail("Se instalará al reiniciar Winkit.")
+            .action("Reiniciar ahora", "installUpdate", None, true),
+    );
     Ok(())
 }
 

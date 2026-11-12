@@ -1,7 +1,7 @@
 {
   "name": "winkit",
   "productName": "Winkit",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Herramientas para Windows con Claude: escribir, traducir, buscar y elegir colores",
   "author": "Alejandro Font",
   "license": "MIT",

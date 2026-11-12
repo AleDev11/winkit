@@ -4,7 +4,6 @@
 #[macro_use]
 mod log;
 mod ai;
-mod claude;
 mod ipc;
 mod lang;
 mod launcher;
@@ -102,7 +101,6 @@ fn handle_args(args: &[String]) {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     log::install_panic_hook();
-    win::toast::init();
     log::info("app", &format!("arranca Winkit {}", env!("CARGO_PKG_VERSION")));
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|_app, args, _cwd| handle_args(&args)))
@@ -110,6 +108,16 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_autostart::init(tauri_plugin_autostart::MacosLauncher::LaunchAgent, None))
         .invoke_handler(tauri::generate_handler![
+            voice::commands::voice_engines,
+            voice::commands::voice_voices,
+            voice::commands::voice_save_key,
+            voice::commands::voice_remove_key,
+            voice::commands::voice_speak,
+            voice::commands::voice_stop,
+            voice::commands::voice_status,
+            voice::commands::voice_install,
+            voice::commands::voice_cancel,
+            voice::commands::voice_remove,
             ipc::ui_env,
             ipc::copy_text,
             ipc::open_settings,
@@ -121,6 +129,9 @@ pub fn run() {
             ipc::palette_replace,
             ipc::palette_copy,
             ipc::palette_close,
+            ipc::palette_set_free,
+            ipc::palette_drag,
+            ipc::notice_action,
             ipc::launcher_current,
             ipc::launcher_resize,
             ipc::list_apps,
@@ -151,6 +162,19 @@ pub fn run() {
             ipc::update_status,
             ipc::update_check,
             ipc::update_restart,
+            ai::commands::ai_providers,
+            ai::commands::ai_save_key,
+            ai::commands::ai_remove_key,
+            ai::commands::ai_models,
+            ai::commands::ai_test,
+            ai::commands::ai_model_for,
+            ai::commands::local_ai_catalog,
+            ai::commands::local_ai_status,
+            ai::commands::local_ai_install,
+            ai::commands::local_ai_cancel,
+            ai::commands::local_ai_remove,
+            ai::commands::local_ai_unload,
+            ai::commands::local_ai_open_folder,
         ])
         .on_window_event(|window, event| match (window.label(), event) {
             (ui::PALETTE, WindowEvent::Focused(f)) => palette::on_focus_change(*f),
@@ -176,7 +200,9 @@ pub fn run() {
             updater::start();
 
             let args: Vec<String> = std::env::args().collect();
-            if settings::api_key().is_none() {
+            let s = settings::get();
+            // Sin IA lista para escribir (falta la key, el servidor o el modelo local), lo primero es configurarla.
+            if !ai::ready(&s, &s.ai.for_tool("writing").provider) {
                 spawn_settings();
             } else if args.iter().any(|a| a == "--launcher" || a == "--reader" || a == "--understand") {
                 handle_args(&args);
@@ -200,7 +226,11 @@ pub fn run() {
         // La app vive en la bandeja: cerrar ventanas no la termina (solo «Salir»).
         match event {
             RunEvent::ExitRequested { code: None, api, .. } => api.prevent_exit(),
-            RunEvent::Exit => replay::shutdown(),
+            RunEvent::Exit => {
+                replay::shutdown();
+                // El servidor de la IA local se para con Winkit (y el Job object lo garantiza si muere).
+                ai::local::shutdown();
+            }
             _ => {}
         }
     });

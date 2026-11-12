@@ -118,39 +118,45 @@ pub fn handler(_app: &AppHandle, sc: &Shortcut, event: ShortcutEvent) {
     }
 }
 
-/// Atajo de clips: guarda los últimos minutos y avisa con el aviso de la paleta
-/// y una notificación de Windows (con «Ver clip» y «Mostrar en la carpeta»).
+/// Atajo de clips: «Guardando clip…» al momento y, en el mismo sitio, «Clip
+/// guardado» con «Ver clip» y «Mostrar en la carpeta» (o el error con «Reintentar»).
 pub async fn save_clip() {
-    use crate::win::toast::{self, OnClick};
+    use crate::palette::{show_notice, Notice};
     let c = settings::get().clips;
     if !c.enabled {
-        return palette::notice("Activa los clips en Ajustes para poder guardarlos.", true, None);
+        return show_notice(
+            Notice::info("Los clips están desactivados")
+                .detail("Actívalos en Ajustes para guardar lo último de tu pantalla.")
+                .action("Abrir ajustes", "openSettings", None, true),
+        );
     }
-    // Al momento, para que se vea que el atajo ha llegado; guardar tarda hasta ~1 s.
-    palette::notice("Guardando clip…", false, None);
+    let minutes = format!("Últimos {} min", c.minutes);
+    show_notice(Notice::progress("Guardando clip…").detail(minutes.clone()).group("clip"));
     let started = std::time::Instant::now();
     match crate::replay::save().await {
         Ok(path) => {
             let mb = std::fs::metadata(&path).map(|m| m.len() as f64 / 1_048_576.0).unwrap_or(0.0);
             let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
             crate::log_info!("clips", "guardado {name} ({mb:.0} MB) en {} ms", started.elapsed().as_millis());
+            let size = if mb >= 1024.0 { format!("{:.1} GB", mb / 1024.0).replace('.', ",") } else { format!("{mb:.0} MB") };
             let p = path.to_string_lossy().into_owned();
-            let body = format!("Últimos {} min · {mb:.0} MB\n{name}", c.minutes);
-            // Las dos cosas: el aviso junto al cursor se ve siempre (también con «No
-            // molestar», que Windows no deja detectar) y la notificación queda en el
-            // centro de notificaciones con sus botones.
-            palette::notice(format!("Clip guardado: últimos {} min", c.minutes), false, None);
-            toast::show(
-                "Clip guardado",
-                &body,
-                Some(OnClick::Open(p.clone())),
-                &[("Ver clip", OnClick::Open(p.clone())), ("Mostrar en la carpeta", OnClick::Reveal(p))],
+            show_notice(
+                Notice::success("Clip guardado")
+                    .detail(format!("{minutes} · {size}"))
+                    .group("clip")
+                    .action("Ver clip", "openFile", Some(p.clone()), true)
+                    .action("Mostrar en la carpeta", "reveal", Some(p), false),
             );
         }
         Err(e) => {
             crate::log_warn!("clips", "no se ha podido guardar: {e}");
-            toast::show("No se ha podido guardar el clip", &e, Some(OnClick::Settings), &[]);
-            palette::notice(e, false, None);
+            show_notice(
+                Notice::error("No se ha podido guardar el clip")
+                    .detail(e)
+                    .group("clip")
+                    .action("Reintentar", "retryClip", None, true)
+                    .action("Abrir ajustes", "openSettings", None, false),
+            );
         }
     }
 }
