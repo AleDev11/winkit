@@ -5,3 +5,5 @@ src-tauri/gen/
 *.log
 .env
 *.tsbuildinfo
+installer/Output/
+installer/shots/

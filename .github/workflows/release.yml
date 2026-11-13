@@ -1,7 +1,8 @@
 # Publica una release al subir una etiqueta vX.Y.Z:
 #   git tag v0.3.0 && git push origin v0.3.0
-# Compila el instalador NSIS, lo firma para el actualizador y sube latest.json,
-# que es lo que consultan las copias instaladas para actualizarse solas.
+# Compila Winkit, monta el instalador con Inno Setup (installer/winkit.iss), lo
+# firma para el actualizador y sube latest.json, que es lo que consultan las
+# copias instaladas para actualizarse solas.
 #
 # Secretos necesarios en GitHub (Settings → Secrets and variables → Actions):
 #   TAURI_SIGNING_PRIVATE_KEY           contenido de ~/.tauri/winkit.key
@@ -41,15 +42,57 @@ jobs:
           npm test
           cargo test --manifest-path src-tauri/Cargo.toml
 
-      - uses: tauri-apps/tauri-action@v0
+      # Solo el ejecutable: el instalador ya no lo hace Tauri (NSIS) sino Inno Setup.
+      - name: Compilar Winkit
+        run: npm run tauri build -- --no-bundle
+
+      - name: Instalar Inno Setup
+        run: choco install innosetup --no-progress -y
+
+      - name: Instalador
+        id: setup
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          & "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe" /Q "/DAppVersion=$version" installer\winkit.iss
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "file=installer/Output/Winkit_${version}_x64-setup.exe" >> $env:GITHUB_OUTPUT
+
+      # La misma firma minisign que hacía tauri-action: el actualizador la comprueba
+      # con la clave pública de tauri.conf.json antes de ejecutar el instalador.
+      - name: Firmar para el actualizador
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Winkit ${{ github.ref_name }}
-          releaseBody: 'Descarga `Winkit_*_x64-setup.exe` e instálalo. Si ya tienes Winkit, se actualizará solo.'
-          releaseDraft: false
-          prerelease: false
-          includeUpdaterJson: true
+        run: npx tauri signer sign "${{ steps.setup.outputs.file }}"
+
+      - name: latest.json
+        shell: pwsh
+        run: |
+          $file = "${{ steps.setup.outputs.file }}"
+          $name = Split-Path $file -Leaf
+          $latest = [ordered]@{
+            version   = "${{ steps.setup.outputs.version }}"
+            notes     = "Winkit ${{ github.ref_name }}"
+            pub_date  = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+            platforms = [ordered]@{
+              'windows-x86_64' = [ordered]@{
+                signature = (Get-Content "$file.sig" -Raw).Trim()
+                url       = "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$name"
+              }
+            }
+          }
+          $latest | ConvertTo-Json -Depth 5 | Set-Content installer/Output/latest.json -Encoding utf8NoBOM
+
+      - name: Publicar la release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: pwsh
+        run: |
+          gh release create "${{ github.ref_name }}" `
+            "${{ steps.setup.outputs.file }}" `
+            "${{ steps.setup.outputs.file }}.sig" `
+            installer/Output/latest.json `
+            --title "Winkit ${{ github.ref_name }}" `
+            --notes 'Descarga `Winkit_*_x64-setup.exe` e instálalo. Si ya tienes Winkit, se actualizará solo.'
